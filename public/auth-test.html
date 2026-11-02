@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Auth Test</title>
+<style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font: 15px/1.45 system-ui, sans-serif; background: #f3f4f6; color: #1f2937; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    h2 { font-size: 16px; margin: 0 0 12px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 800px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; }
+    label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+    input, select { display: block; width: 100%; margin-top: 4px; padding: 8px; font: inherit; border: 1px solid #9ca3af; border-radius: 6px; background: #fff; color: inherit; }
+    button { padding: 8px 12px; margin: 0 6px 6px 0; font: inherit; border: 1px solid #1d4ed8; border-radius: 6px; background: #1d4ed8; color: #fff; cursor: pointer; }
+    button.alt { background: #fff; color: #1d4ed8; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .hint { font-size: 13px; color: #4b5563; margin: 0 0 10px; }
+    #msg { display: none; padding: 8px 10px; margin-bottom: 12px; border-radius: 6px; overflow-wrap: anywhere; }
+    #msg.ok { display: block; background: #dcfce7; color: #166534; }
+    #msg.err { display: block; background: #fee2e2; color: #991b1b; }
+    #restart { margin: 8px 0 0; }
+    pre { margin: 0; font: 12px/1.4 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #log { max-height: 80vh; overflow-y: auto; }
+    .entry { padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+    [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1>Pathshala login test (testing only)</h1>
+<div class="layout">
+    <div class="card">
+        <div id="msg" role="status"></div>
+
+        <form id="step-mobile" class="step">
+            <h2>1. Role and mobile number</h2>
+            <label>Role
+                <select id="role" required>
+                    <option value="student">Student</option>
+                    <option value="teacher" disabled>Teacher (coming later)</option>
+                </select>
+            </label>
+            <label>Mobile number <input id="mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
+            <button type="submit">Send OTP</button>
+            <button type="button" class="alt" id="use-pin">Log in with PIN</button>
+        </form>
+
+        <form id="step-otp" class="step" hidden>
+            <h2>2. Verify OTP</h2>
+            <p class="hint">Test OTP: 123456. Two wrong entries lock this number for 1 hour.</p>
+            <label>OTP <input id="otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="resend-otp">Resend OTP</button>
+        </form>
+
+        <form id="step-school" class="step" hidden>
+            <h2>3. School, class and Student ID</h2>
+            <label>School <select id="school" required></select></label>
+            <label id="class-wrap">Class <select id="class"></select></label>
+            <label id="school-name-wrap" hidden>School name <input id="school-name"></label>
+            <label id="class-name-wrap" hidden>Class name <input id="class-name"></label>
+            <label>Student ID <input id="student-id" required></label>
+            <button type="submit" id="check-student">Check student</button>
+            <button type="button" class="alt js-guest">Continue as guest</button>
+        </form>
+
+        <form id="step-student" class="step" hidden>
+            <h2>4. Verify student</h2>
+            <p class="hint">Student: <strong id="student-name"></strong></p>
+            <label>Password <input id="password" type="password" autocomplete="off" required></label>
+            <button type="submit">Verify with password</button>
+            <button type="button" class="alt" id="send-contact">Send OTP to contact number</button>
+            <p class="hint" id="no-contact" hidden>This student has no contact number, so OTP is not available.</p>
+            <button type="button" class="alt js-guest">Can't verify? Continue as guest</button>
+        </form>
+
+        <form id="step-contact" class="step" hidden>
+            <h2>4. Student contact OTP</h2>
+            <p class="hint">Test OTP: 123456</p>
+            <label>OTP <input id="contact-otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="resend-contact">Resend OTP</button>
+            <button type="button" class="alt" id="use-password">Use password instead</button>
+            <button type="button" class="alt js-guest">Can't verify? Continue as guest</button>
+        </form>
+
+        <form id="step-pin" class="step" hidden>
+            <h2>5. Set PIN</h2>
+            <label>PIN (4 digits) <input id="pin" type="password" inputmode="numeric" maxlength="4" required></label>
+            <label>Confirm PIN <input id="pin-confirm" type="password" inputmode="numeric" maxlength="4" required></label>
+            <button type="submit">Save PIN and log in</button>
+        </form>
+
+        <form id="step-pin-login" class="step" hidden>
+            <h2>Log in with PIN</h2>
+            <p class="hint">Role: <strong id="login-role"></strong></p>
+            <label>Mobile number <input id="login-mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
+            <label>PIN <input id="login-pin" type="password" inputmode="numeric" maxlength="4" required></label>
+            <button type="submit">Log in</button>
+        </form>
+
+        <div id="step-home" class="step" hidden>
+            <h2>Logged in</h2>
+            <pre id="user-data"></pre>
+            <p></p>
+            <button type="button" id="load-me">GET /auth/me</button>
+            <button type="button" class="alt" id="logout">Log out</button>
+            <button type="button" class="alt" id="old-token" hidden>Try old token</button>
+        </div>
+
+        <button type="button" class="alt" id="restart">Start over</button>
+    </div>
+
+    <div class="card">
+        <h2>API log</h2>
+        <div id="log"><p class="hint">Requests and responses appear here. Passwords, PINs and tokens are hidden.</p></div>
+    </div>
+</div>
+
+<script>
+const API = '/api/v1';
+const HIDDEN_FIELDS = ['password', 'pin', 'pin_confirmation', 'token', 'flow_token'];
+const $ = (id) => document.getElementById(id);
+
+let flowToken = null;
+let token = null;
+let oldToken = null;
+let schoolsLoaded = false;
+
+function show(stepId) {
+    document.querySelectorAll('.step').forEach((el) => { el.hidden = el.id !== stepId; });
+}
+
+function notify(text, ok) {
+    $('msg').textContent = text;
+    $('msg').className = ok ? 'ok' : 'err';
+}
+
+function clearNotice() {
+    $('msg').textContent = '';
+    $('msg').className = '';
+}
+
+function redact(key, value) {
+    return HIDDEN_FIELDS.includes(key) && value ? '(hidden)' : value;
+}
+
+function addLog(label, request, response) {
+    const entry = document.createElement('div');
+    entry.className = 'entry';
+    const pre = document.createElement('pre');
+    pre.textContent = label
+        + (request ? '\nRequest: ' + JSON.stringify(request, redact, 2) : '')
+        + '\nResponse: ' + JSON.stringify(response, redact, 2);
+    entry.appendChild(pre);
+    $('log').prepend(entry);
+}
+
+async function call(method, path, body, bearer) {
+    const headers = { Accept: 'application/json' };
+    if (body) headers['Content-Type'] = 'application/json';
+    if (bearer) headers.Authorization = 'Bearer ' + bearer;
+
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach((b) => { b.disabled = true; });
+
+    try {
+        const res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+        const text = await res.text();
+        let json;
+        try {
+            json = JSON.parse(text);
+        } catch {
+            json = { status: false, message: 'Server returned a non-JSON response (HTTP ' + res.status + ')', raw: text.slice(0, 500) };
+        }
+        addLog(method + ' ' + path + ' -> HTTP ' + res.status, body, json);
+
+        if (res.ok && json.status !== false) {
+            if (json.message) notify(json.message, true);
+            return json.data ?? {};
+        }
+
+        const details = json.errors ? ': ' + Object.values(json.errors).flat().join(' ') : '';
+        notify((json.message || 'Request failed') + details, false);
+        return null;
+    } catch (e) {
+        addLog(method + ' ' + path + ' -> network error', body, { message: e.message });
+        notify('Could not reach the API: ' + e.message, false);
+        return null;
+    } finally {
+        buttons.forEach((b) => { b.disabled = false; });
+    }
+}
+
+function fillSelect(select, rows, valueKey, labelFn) {
+    select.replaceChildren();
+    rows.forEach((row) => {
+        const option = document.createElement('option');
+        option.value = row[valueKey];
+        option.textContent = labelFn(row);
+        select.appendChild(option);
+    });
+}
+
+function isOthers() {
+    return $('school').value === 'others';
+}
+
+async function loadClasses() {
+    const others = isOthers();
+    $('class-wrap').hidden = others;
+    $('school-name-wrap').hidden = !others;
+    $('class-name-wrap').hidden = !others;
+    $('check-student').hidden = others;
+    $('class').replaceChildren();
+    if (others || !$('school').value) return;
+
+    const classes = await call('GET', '/schools/' + encodeURIComponent($('school').value) + '/classes');
+    if (classes) fillSelect($('class'), classes, 'class_code', (c) => c.class_name);
+}
+
+async function openSchoolStep() {
+    show('step-school');
+    if (schoolsLoaded) return;
+
+    const schools = await call('GET', '/schools');
+    if (!schools) return;
+
+    fillSelect($('school'), [...schools, { schl_id: 'others', schl_name: 'Others (type the name)' }], 'schl_id', (s) => s.schl_name);
+    schoolsLoaded = true;
+    await loadClasses();
+}
+
+function loggedIn(data) {
+    token = data.token;
+    $('user-data').textContent = JSON.stringify(data.user, null, 2);
+    $('old-token').hidden = true;
+    show('step-home');
+}
+
+function sendMobileOtp() {
+    return call('POST', '/auth/send-otp', { mobile_number: $('mobile').value.trim(), role: $('role').value });
+}
+
+$('step-mobile').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearNotice();
+    if (await sendMobileOtp()) show('step-otp');
+});
+
+$('use-pin').addEventListener('click', () => {
+    clearNotice();
+    $('login-mobile').value = $('mobile').value;
+    $('login-role').textContent = $('role').selectedOptions[0].textContent;
+    show('step-pin-login');
+});
+
+$('step-otp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/verify-otp', { mobile_number: $('mobile').value.trim(), otp: $('otp').value.trim(), role: $('role').value });
+    if (data) {
+        flowToken = data.flow_token;
+        await openSchoolStep();
+    }
+});
+
+$('resend-otp').addEventListener('click', sendMobileOtp);
+
+$('school').addEventListener('change', loadClasses);
+
+$('step-school').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/check', {
+        flow_token: flowToken,
+        schl_id: Number($('school').value),
+        class_code: Number($('class').value),
+        student_id: $('student-id').value.trim(),
+    });
+    if (data) {
+        flowToken = data.flow_token;
+        $('student-name').textContent = data.student_name;
+        $('send-contact').hidden = !data.has_contact_number;
+        $('no-contact').hidden = data.has_contact_number;
+        show('step-student');
+    }
+});
+
+$('step-student').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/verify-password', { flow_token: flowToken, password: $('password').value });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+function sendContactOtp() {
+    return call('POST', '/auth/student/send-contact-otp', { flow_token: flowToken });
+}
+
+$('send-contact').addEventListener('click', async () => {
+    if (await sendContactOtp()) show('step-contact');
+});
+
+$('use-password').addEventListener('click', () => {
+    clearNotice();
+    show('step-student');
+});
+
+$('resend-contact').addEventListener('click', sendContactOtp);
+
+$('step-contact').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/verify-contact-otp', { flow_token: flowToken, otp: $('contact-otp').value.trim() });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+document.querySelectorAll('.js-guest').forEach((button) => {
+    button.addEventListener('click', async () => {
+        if (!$('student-id').value.trim()) {
+            show('step-school');
+            notify('Enter a Student ID to continue as guest', false);
+            return;
+        }
+
+        const body = { flow_token: flowToken, student_id: $('student-id').value.trim() };
+        if (isOthers()) {
+            body.school_name = $('school-name').value.trim();
+            body.class_name = $('class-name').value.trim();
+        } else {
+            body.schl_id = Number($('school').value);
+            body.class_code = Number($('class').value);
+        }
+
+        const data = await call('POST', '/auth/guest', body);
+        if (data) {
+            flowToken = data.flow_token;
+            show('step-pin');
+        }
+    });
+});
+
+$('step-pin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/set-pin', { flow_token: flowToken, pin: $('pin').value, pin_confirmation: $('pin-confirm').value });
+    if (data) loggedIn(data);
+});
+
+$('step-pin-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/pin-login', { mobile_number: $('login-mobile').value.trim(), role: $('role').value, pin: $('login-pin').value });
+    if (data) loggedIn(data);
+});
+
+$('load-me').addEventListener('click', async () => {
+    const data = await call('GET', '/auth/me', null, token);
+    if (data) $('user-data').textContent = JSON.stringify(data, null, 2);
+});
+
+$('logout').addEventListener('click', async () => {
+    if (await call('POST', '/auth/logout', {}, token)) {
+        oldToken = token;
+        $('old-token').hidden = false;
+    }
+});
+
+// After a logout this request should fail, because the saved auth_token has been cleared.
+$('old-token').addEventListener('click', () => call('GET', '/auth/me', null, oldToken));
+
+$('restart').addEventListener('click', () => {
+    flowToken = null;
+    token = null;
+    oldToken = null;
+    document.querySelectorAll('input').forEach((input) => { input.value = ''; });
+    clearNotice();
+    show('step-mobile');
+});
+</script>
+</body>
+</html>

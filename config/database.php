@@ -30,6 +30,11 @@ return [
             'database' => null,
         ],
 
+        // The same school, used only for writing homework. See SchoolDbService.
+        'tenant_homework' => $mysql + [
+            'database' => null,
+        ],
+
     ],
 
     // db_school_api_web already has an unrelated `migrations` table, so this

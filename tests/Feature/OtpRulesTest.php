@@ -154,7 +154,7 @@ class OtpRulesTest extends TestCase
             ->assertJsonPath('status', false)
             ->assertJsonStructure(['message', 'errors' => ['mobile_number']]);
 
-        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'teacher'])
+        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'parent'])
             ->assertStatus(422);
     }
 }

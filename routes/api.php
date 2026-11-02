@@ -1,8 +1,11 @@
 <?php
 
-use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\StudentAuthController;
+use App\Http\Controllers\Auth\TeacherAuthController;
+use App\Http\Controllers\HwAssignment\StudentHomeworkController;
+use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
 use App\Http\Controllers\SchoolController;
-use App\Http\Controllers\StudentAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('throttle:auth')->group(function () {
@@ -18,9 +21,41 @@ Route::middleware('throttle:auth')->group(function () {
     Route::post('auth/student/verify-contact-otp', [StudentAuthController::class, 'verifyContactOtp']);
     Route::post('auth/guest', [StudentAuthController::class, 'guest']);
 
+    Route::post('auth/teacher/verify', [TeacherAuthController::class, 'verify']);
+    Route::post('auth/teacher/guest', [TeacherAuthController::class, 'guest']);
+
     Route::post('auth/set-pin', [AuthController::class, 'setPin']);
     Route::post('auth/pin-login', [AuthController::class, 'pinLogin']);
 
     Route::get('auth/me', [AuthController::class, 'me'])->middleware(['jwt.app', 'tenant']);
     Route::post('auth/logout', [AuthController::class, 'logout'])->middleware('jwt.app');
 });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:student'])
+    ->prefix('students/{studentId}/homework')
+    ->whereNumber(['studentId', 'homeworkId'])
+    ->controller(StudentHomeworkController::class)
+    ->group(function () {
+        Route::get('/', 'index')->middleware('cache.headers:private;etag');
+        Route::get('summary', 'summary')->middleware('cache.headers:private;etag');
+        Route::post('{homeworkId}/submissions', 'submit')->middleware('activity:submit_homework');
+    });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:teacher'])
+    ->prefix('teacher')
+    ->whereNumber(['homeworkId', 'studentId'])
+    ->controller(TeacherHomeworkController::class)
+    ->group(function () {
+        Route::get('teaching-options', 'teachingOptions');
+        Route::get('homework/filter-options', 'filterOptions');
+        Route::get('homework/dashboard', 'dashboard');
+        Route::get('homework', 'index');
+        Route::post('homework', 'store')->middleware('activity:create_homework');
+        Route::get('homework/{homeworkId}', 'show');
+        Route::match(['patch', 'post'], 'homework/{homeworkId}', 'update')->middleware('activity:update_homework');
+        Route::delete('homework/{homeworkId}', 'destroy')->middleware('activity:delete_homework');
+        Route::get('homework/{homeworkId}/submissions', 'roster');
+        Route::get('homework/{homeworkId}/submissions/{studentId}', 'work');
+        Route::post('homework/{homeworkId}/submissions/{studentId}/assessment', 'assess')->middleware('activity:assess_homework');
+        Route::post('homework/{homeworkId}/submissions/{studentId}/resubmission', 'requestResubmission')->middleware('activity:request_resubmission');
+    });

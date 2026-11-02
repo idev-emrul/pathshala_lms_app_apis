@@ -2,7 +2,9 @@
 
 use App\Exceptions\ApiException;
 use App\Http\Middleware\AuthenticateAppToken;
+use App\Http\Middleware\AuthorizeHomework;
 use App\Http\Middleware\ConnectTenant;
+use App\Http\Middleware\RecordActivity;
 use App\Support\ApiResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -22,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'jwt.app' => AuthenticateAppToken::class,
             'tenant' => ConnectTenant::class,
+            'homework' => AuthorizeHomework::class,
+            'activity' => RecordActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

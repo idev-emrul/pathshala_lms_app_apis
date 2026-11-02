@@ -36,7 +36,7 @@ class StudentAuthService
      */
     public function check(string $flowToken, int $schlId, int $classCode, string $studentId): array
     {
-        $flow = $this->tokens->readFlowToken($flowToken, [TokenService::STEP_MOBILE_VERIFIED, TokenService::STEP_STUDENT_FOUND]);
+        $flow = $this->studentFlow($flowToken);
 
         $school = $this->schools->findSchool($schlId);
         $tenant = $this->schools->connectToSchool($school);
@@ -111,7 +111,9 @@ class StudentAuthService
      */
     public function guest(string $flowToken, array $input): array
     {
-        $flow = $this->tokens->readFlowToken($flowToken, [TokenService::STEP_MOBILE_VERIFIED, TokenService::STEP_STUDENT_FOUND]);
+        $flow = $this->studentFlow($flowToken);
+
+        $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], null, null);
 
         $details = [
             'schl_id' => null,
@@ -154,13 +156,17 @@ class StudentAuthService
     {
         $flow = $this->tokens->readFlowToken($flowToken, [TokenService::STEP_READY], singleUse: true);
 
+        // Checked again here, because a flow token can be issued before another login finishes.
+        $verifiedId = $flow['is_verified'] ? (string) ($flow['teacher_user_id'] ?? $flow['student_id']) : null;
+        $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], $flow['schl_id'], $verifiedId);
+
         $user = AppUser::firstOrNew(['mobile_number' => $flow['mobile_number'], 'role' => $flow['role']]);
         $isPinReset = $user->pin !== null;
         $dbName = $flow['schl_id'] ? $this->schools->findSchool($flow['schl_id'])->db_name : null;
 
         $token = DB::connection('master')->transaction(function () use ($user, $flow, $pin, $isPinReset, $dbName) {
             $user->fill([
-                'verified_id' => $flow['is_verified'] ? $flow['student_id'] : null,
+                'verified_id' => $flow['is_verified'] ? ($flow['teacher_user_id'] ?? $flow['student_id']) : null,
                 'is_verified' => $flow['is_verified'],
                 'verified_by' => $flow['verified_by'],
                 'schl_id' => $flow['schl_id'],
@@ -183,7 +189,7 @@ class StudentAuthService
             return $token;
         });
 
-        return $this->loginResult($user, $token, $flow['student_name']);
+        return $this->loginResult($user, $token, $flow['teacher_name'] ?? $flow['student_name']);
     }
 
     public function pinLogin(string $mobileNumber, string $role, string $pin): array
@@ -209,7 +215,36 @@ class StudentAuthService
         $user->update(['auth_token' => $token, 'last_login_at' => now()]);
         AppUserLog::record($user, AppUserLog::LOGIN);
 
-        return $this->loginResult($user, $token, $this->studentName($user, $tenant ? $this->schools->connectToSchool($tenant) : null));
+        return $this->loginResult($user, $token, $this->personName($user, $tenant ? $this->schools->connectToSchool($tenant) : null));
+    }
+
+    /**
+     * A number with an account logs in with its PIN. An OTP is only sent to reset the PIN.
+     */
+    public function ensureNoAccountYet(string $mobileNumber, string $role): void
+    {
+        $user = AppUser::where('mobile_number', $mobileNumber)->where('role', $role)->first();
+
+        if ($user?->pin) {
+            throw new ApiException('This number already has an account. Log in with your PIN.', 409, ['next' => 'pin_login']);
+        }
+    }
+
+    /**
+     * A number belongs to one account per role. Once it has a verified login, only that same
+     * person can go through again (a PIN reset). Another person or a guest cannot replace them.
+     */
+    public function ensureNumberIsAvailable(string $mobileNumber, string $role, ?int $schlId, ?string $verifiedId): void
+    {
+        $user = AppUser::where('mobile_number', $mobileNumber)->where('role', $role)->first();
+
+        if (! $user?->pin || ! $user->is_verified) {
+            return;
+        }
+
+        if ($verifiedId === null || (int) $user->schl_id !== $schlId || (string) $user->verified_id !== $verifiedId) {
+            throw new ApiException('This number is already linked to another account. Log in with your PIN or use a different number.', 409);
+        }
     }
 
     public function logout(AppUser $user): void
@@ -225,15 +260,25 @@ class StudentAuthService
      */
     public function profile(AppUser $user, ?Connection $tenant): array
     {
+        $profile = $this->userData($user, $this->personName($user, $tenant)) + [
+            'mobile_number' => Phone::mask($user->mobile_number),
+            'language_mode' => $user->language_mode,
+        ];
+
+        if ($user->role === AppUser::ROLE_TEACHER) {
+            $teacher = ($user->is_verified && $tenant) ? $this->schools->findTeacher($tenant, $user->verified_id) : null;
+
+            return $profile + ['teacher_code' => $teacher?->teacher_code];
+        }
+
         $placement = ($user->is_verified && $tenant)
             ? $this->schools->currentPlacement($tenant, $user->verified_id)
             : null;
 
-        return $this->userData($user, $this->studentName($user, $tenant)) + [
-            'mobile_number' => Phone::mask($user->mobile_number),
+        return $profile + [
             'student_id' => $user->entered_student_id,
-            'language_mode' => $user->language_mode,
             'placement' => $placement ? [
+                'homework_student_id' => (string) $placement->current_status_info_id,
                 'session_name' => $placement->session_name,
                 'class_name' => $placement->class_name,
                 'section_name' => $placement->section_name,
@@ -244,8 +289,24 @@ class StudentAuthService
         ];
     }
 
+    /**
+     * The entry to the student steps. A teacher's flow token cannot be used here.
+     */
+    private function studentFlow(string $flowToken): array
+    {
+        $flow = $this->tokens->readFlowToken($flowToken, [TokenService::STEP_MOBILE_VERIFIED, TokenService::STEP_STUDENT_FOUND]);
+
+        if ($flow['role'] !== AppUser::ROLE_STUDENT) {
+            throw new ApiException('Session expired or invalid. Please start again.');
+        }
+
+        return $flow;
+    }
+
     private function verifiedStep(array $flow, string $verifiedBy): array
     {
+        $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], $flow['schl_id'], (string) $flow['student_id']);
+
         return [
             'flow_token' => $this->tokens->issueFlowToken(TokenService::STEP_READY, $flow + [
                 'is_verified' => true,
@@ -268,16 +329,21 @@ class StudentAuthService
         return $this->schools->connectToSchool($this->schools->findSchool($flow['schl_id']));
     }
 
-    private function studentName(AppUser $user, ?Connection $tenant): ?string
+    /**
+     * verified_id is a users.id or a student ID depending on the role, and the two can overlap.
+     */
+    private function personName(AppUser $user, ?Connection $tenant): ?string
     {
         if (! $user->is_verified || ! $tenant) {
             return null;
         }
 
-        return $this->schools->findStudent($tenant, $user->verified_id)?->student_name;
+        return $user->role === AppUser::ROLE_TEACHER
+            ? $this->schools->findTeacher($tenant, $user->verified_id)?->teacher_name
+            : $this->schools->findStudent($tenant, $user->verified_id)?->student_name;
     }
 
-    private function ensureNotLimited(string $key): void
+    public function ensureNotLimited(string $key): void
     {
         if (RateLimiter::tooManyAttempts($key, config('pathshala.login_limit.attempts'))) {
             throw new ApiException(
@@ -288,16 +354,16 @@ class StudentAuthService
         }
     }
 
-    private function loginResult(AppUser $user, string $token, ?string $studentName): array
+    private function loginResult(AppUser $user, string $token, ?string $name): array
     {
         return [
             'token' => $token,
             'token_type' => 'bearer',
-            'user' => $this->userData($user, $studentName),
+            'user' => $this->userData($user, $name),
         ];
     }
 
-    private function userData(AppUser $user, ?string $studentName): array
+    private function userData(AppUser $user, ?string $name): array
     {
         return [
             'id' => $user->id,
@@ -305,7 +371,7 @@ class StudentAuthService
             'is_verified' => $user->is_verified,
             'school_name' => $user->school_name,
             'class_name' => $user->class_name,
-            'student_name' => $studentName,
+            ($user->role === AppUser::ROLE_TEACHER ? 'teacher_name' : 'student_name') => $name,
         ];
     }
 }

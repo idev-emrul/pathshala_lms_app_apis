@@ -28,5 +28,7 @@
         <env name="OTP_FIXED" value="123456" force="true"/>
         <env name="JWT_SECRET" value="test-secret-test-secret-test-secret-test-secret" force="true"/>
         <env name="TOKEN_SALT" value="test-shared-salt" force="true"/>
+        <env name="HW_FILES_DISK" value="local" force="true"/>
+        <env name="HW_FILES_URL" value="http://files.test" force="true"/>
     </php>
 </phpunit>

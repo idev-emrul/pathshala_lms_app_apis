@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Auth;
 
-use App\Services\ActivityLogService;
+use App\Http\Controllers\Controller;
 use App\Services\OtpService;
 use App\Services\StudentAuthService;
 use App\Services\TokenService;
@@ -15,8 +15,7 @@ class AuthController extends Controller
 {
     private const MOBILE_RULE = ['required', 'string', 'regex:/^01[3-9]\d{8}$/'];
 
-    // Only the student role exists in Phase 1.
-    private const ROLE_RULE = ['string', 'in:student'];
+    private const ROLE_RULE = ['string', 'in:student,teacher'];
 
     public function __construct(
         private OtpService $otp,
@@ -29,7 +28,12 @@ class AuthController extends Controller
         $input = $request->validate([
             'mobile_number' => self::MOBILE_RULE,
             'role' => ['required', ...self::ROLE_RULE],
+            'reset_pin' => ['sometimes', 'boolean'],
         ]);
+
+        if (! $request->boolean('reset_pin')) {
+            $this->students->ensureNoAccountYet($input['mobile_number'], $input['role']);
+        }
 
         $sent = $this->otp->send($input['mobile_number'], OtpService::PURPOSE_LOGIN);
 
@@ -81,13 +85,9 @@ class AuthController extends Controller
         );
     }
 
-    public function me(Request $request, ActivityLogService $activity): JsonResponse
+    public function me(Request $request): JsonResponse
     {
-        $user = $request->attributes->get('app_user');
-
-        $activity->record($user, 'view_profile');
-
-        return ApiResponse::success('Profile', $this->students->profile($user, $request->attributes->get('tenant')));
+        return ApiResponse::success('Profile', $this->students->profile($request->attributes->get('app_user'), $request->attributes->get('tenant')));
     }
 
     public function logout(Request $request): JsonResponse

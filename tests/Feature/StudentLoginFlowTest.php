@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppLoginAttempt;
 use App\Models\AppUser;
 use App\Models\AppUserLog;
 use App\Services\ActivityLogService;
@@ -46,7 +47,7 @@ class StudentLoginFlowTest extends TestCase
 
     private function mobileFlow(): string
     {
-        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'student'])->assertOk();
+        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'student', 'reset_pin' => true])->assertOk();
 
         return $this->postJson('/api/v1/auth/verify-otp', ['mobile_number' => self::MOBILE, 'otp' => '123456'])
             ->assertOk()
@@ -353,12 +354,13 @@ class StudentLoginFlowTest extends TestCase
 
     public function test_pin_reset_is_logged_and_stops_old_tokens(): void
     {
-        [, $login] = $this->verifiedLogin();
+        [$student, $login] = $this->verifiedLogin();
         $oldToken = $login->json('data.token');
 
-        $ready = $this->postJson('/api/v1/auth/guest', [
-            'flow_token' => $this->mobileFlow(), 'school_name' => 'A', 'class_name' => 'B', 'student_id' => '1',
-        ])->json('data.flow_token');
+        $ready = $this->postJson('/api/v1/auth/student/verify-password', [
+            'flow_token' => $this->foundFlow($student),
+            'password' => $student->password,
+        ])->assertOk()->json('data.flow_token');
 
         $newToken = $this->setPin($ready, '5678')->assertOk()->json('data.token');
 
@@ -366,6 +368,67 @@ class StudentLoginFlowTest extends TestCase
         $this->withToken($newToken)->getJson('/api/v1/auth/me')->assertOk();
 
         $this->assertSame(1, AppUserLog::where('action', AppUserLog::PIN_RESET)->count());
+    }
+
+    public function test_a_verified_number_cannot_be_taken_by_another_student_or_a_guest(): void
+    {
+        [$student, $login] = $this->verifiedLogin();
+        $other = $this->studentWithoutContact();
+        $this->assertNotEquals($student->id, $other->id);
+
+        $this->postJson('/api/v1/auth/student/verify-password', [
+            'flow_token' => $this->foundFlow($other),
+            'password' => $other->password,
+        ])->assertStatus(409);
+
+        $this->postJson('/api/v1/auth/guest', [
+            'flow_token' => $this->mobileFlow(), 'school_name' => 'A', 'class_name' => 'B', 'student_id' => '1',
+        ])->assertStatus(409);
+
+        $user = AppUser::where('mobile_number', self::MOBILE)->first();
+        $this->assertSame((string) $student->id, $user->verified_id);
+        $this->assertTrue($user->is_verified);
+        $this->withToken($login->json('data.token'))->getJson('/api/v1/auth/me')->assertOk();
+    }
+
+    public function test_a_number_with_an_account_is_sent_to_pin_login_instead_of_an_otp(): void
+    {
+        $send = ['mobile_number' => self::MOBILE, 'role' => 'student'];
+
+        $this->postJson('/api/v1/auth/send-otp', $send)->assertOk();
+        $this->postJson('/api/v1/auth/verify-otp', $send + ['otp' => '123456'])->assertOk();
+
+        // Verified the OTP but never set a PIN: no account yet, so another OTP is fine.
+        $this->postJson('/api/v1/auth/send-otp', $send)->assertOk();
+        $this->postJson('/api/v1/auth/verify-otp', $send + ['otp' => '123456'])->assertOk();
+
+        $this->verifiedLogin();
+        $attempts = AppLoginAttempt::count();
+
+        $this->postJson('/api/v1/auth/send-otp', $send)->assertStatus(409)
+            ->assertJsonPath('message', 'This number already has an account. Log in with your PIN.')
+            ->assertJsonPath('data.next', 'pin_login');
+        $this->assertSame($attempts, AppLoginAttempt::count());
+
+        // Forgot PIN still gets an OTP, and the same number under another role is a new account.
+        $this->postJson('/api/v1/auth/send-otp', $send + ['reset_pin' => true])->assertOk();
+        $this->postJson('/api/v1/auth/verify-otp', $send + ['otp' => '123456'])->assertOk();
+        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'teacher'])->assertOk();
+    }
+
+    public function test_a_guest_number_can_later_be_verified(): void
+    {
+        $ready = $this->postJson('/api/v1/auth/guest', [
+            'flow_token' => $this->mobileFlow(), 'school_name' => 'A', 'class_name' => 'B', 'student_id' => '1',
+        ])->assertOk()->json('data.flow_token');
+        $this->setPin($ready)->assertOk();
+
+        [$student] = $this->verifiedLogin();
+
+        $user = AppUser::where('mobile_number', self::MOBILE)->first();
+        $this->assertSame(1, AppUser::count());
+        $this->assertTrue($user->is_verified);
+        $this->assertSame((string) $student->id, $user->verified_id);
     }
 
     public function test_secrets_are_never_returned_or_readable_in_the_token(): void
@@ -416,18 +479,23 @@ class StudentLoginFlowTest extends TestCase
         [, $login] = $this->verifiedLogin();
         $this->withToken($login->json('data.token'))->getJson('/api/v1/auth/me')->assertOk();
 
-        $this->assertFileExists(config('pathshala.activity_log_path').'/activity_2026_11.log');
-
         $activity = app(ActivityLogService::class);
-        $userId = AppUser::first()->id;
+        $user = AppUser::first();
+        $userId = $user->id;
 
-        $this->assertSame('view_profile', $activity->read(2026, 11)[0]['action']);
+        // Only changes are logged, so viewing the profile adds nothing.
+        $this->assertSame([], $activity->read(2026, 11));
+
+        $activity->record($user, 'create_homework');
+
+        $this->assertFileExists(config('pathshala.activity_log_path').'/activity_2026_11.log');
+        $this->assertSame('create_homework', $activity->read(2026, 11)[0]['action']);
         $this->assertCount(1, $activity->read(2026, 11, $userId));
         $this->assertCount(0, $activity->read(2026, 11, $userId + 1));
         $this->assertSame([], $activity->read(2020, 1));
 
         $this->travelTo(now()->setDate(2026, 12, 1));
-        $this->withToken($login->json('data.token'))->getJson('/api/v1/auth/me')->assertOk();
+        $activity->record($user, 'create_homework');
         $this->assertFileExists(config('pathshala.activity_log_path').'/activity_2026_12.log');
     }
 

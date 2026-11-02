@@ -6,6 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class AppUser extends Model
 {
+    public const ROLE_STUDENT = 'student';
+    public const ROLE_TEACHER = 'teacher';
+
     protected $connection = 'master';
 
     protected $table = 'app_user';

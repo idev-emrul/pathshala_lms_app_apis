@@ -25,4 +25,11 @@ return [
 
     'activity_log_path' => env('ACTIVITY_LOG_PATH', storage_path('logs/activity')),
 
+    'homework' => [
+        'timezone' => 'Asia/Dhaka',
+        'max_file_mb' => 20,
+        'files_disk' => env('HW_FILES_DISK', 'public'),
+        'files_url' => env('HW_FILES_URL'),
+    ],
+
 ];

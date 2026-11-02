@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ApiException;
 use App\Models\School;
 use Illuminate\Database\Connection;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,18 @@ class SchoolDbService
         return $connection;
     }
 
+    /**
+     * Homework is the only thing this API writes to a school's database, and only to hw_ tables.
+     * Everything else stays on the read-only connection above.
+     */
+    public function connectForHomework(string $dbName): Connection
+    {
+        config(['database.connections.tenant_homework.database' => $dbName]);
+        DB::purge('tenant_homework');
+
+        return DB::connection('tenant_homework');
+    }
+
     public function classes(School $school): Collection
     {
         return $this->connectToSchool($school)->table('class_info')
@@ -71,6 +84,45 @@ class SchoolDbService
     }
 
     /**
+     * Only a login with the Teacher user type can be used. Some have no teacher_info row,
+     * but one that does must be an active teacher.
+     */
+    public function findTeacherAccount(Connection $tenant, string $username): ?object
+    {
+        return $this->teacherLogins($tenant)
+            ->where('user.username', $username)
+            ->where('user.user_type', 'Teacher')
+            ->where('user.activated', 1)
+            ->where('user.banned', 0)
+            ->where(fn ($query) => $query->whereNull('teacher.teacher_code')->orWhere('teacher.teacher_active_status', 1))
+            ->first(['user.id', 'user.password', 'teacher.teacher_code', $tenant->raw('COALESCE(teacher.teacher_name, user.user_full_name) as teacher_name')]);
+    }
+
+    public function findTeacher(Connection $tenant, string $userId): ?object
+    {
+        return $this->teacherLogins($tenant)
+            ->where('user.id', $userId)
+            ->first(['teacher.teacher_code', $tenant->raw('COALESCE(teacher.teacher_name, user.user_full_name) as teacher_name')]);
+    }
+
+    public function findActiveTeacherLogin(Connection $tenant, string $userId): ?object
+    {
+        return $this->teacherLogins($tenant)
+            ->where('user.id', $userId)
+            ->where('user.user_type', 'Teacher')
+            ->where('user.activated', 1)
+            ->where('user.banned', 0)
+            ->where(fn ($query) => $query->whereNull('teacher.teacher_code')->orWhere('teacher.teacher_active_status', 1))
+            ->first(['user.id', 'teacher.teacher_code', $tenant->raw('COALESCE(teacher.teacher_name, user.user_full_name) as teacher_name')]);
+    }
+
+    private function teacherLogins(Connection $tenant): Builder
+    {
+        return $tenant->table('users as user')
+            ->leftJoin('teacher_info as teacher', 'teacher.teacher_code', '=', 'user.teacher_code');
+    }
+
+    /**
      * The active row in a running session. If there are several, the highest session wins.
      */
     public function currentPlacement(Connection $tenant, string $studentId): ?object
@@ -86,6 +138,7 @@ class SchoolDbService
             ->where('session.running_session', 1)
             ->orderByDesc('status.session_code')
             ->first([
+                'status.current_status_info_id',
                 'status.class_code',
                 'status.roll_number',
                 'session.session_name',

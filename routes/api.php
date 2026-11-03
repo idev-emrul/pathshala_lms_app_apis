@@ -8,6 +8,8 @@ use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
 use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
 use App\Http\Controllers\SchoolController;
+use App\Http\Controllers\StudentProfile\StudentProfileController;
+use App\Http\Controllers\StudentProfile\TeacherClassListController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('throttle:auth')->group(function () {
@@ -70,3 +72,15 @@ Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:student'])
 Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:teacher'])
     ->get('teachers/{teacherId}/routine', [TeacherRoutineController::class, 'show'])
     ->whereNumber('teacherId');
+
+// Module 1 - Student Full Profile
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile'])
+    ->get('students/{studentId}/profile', [StudentProfileController::class, 'show'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:student', 'activity:request_profile_change'])
+    ->post('students/{studentId}/profile/change-requests', [StudentProfileController::class, 'changeRequest'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:teacher'])
+    ->get('teacher/my-class/students', [TeacherClassListController::class, 'index']);

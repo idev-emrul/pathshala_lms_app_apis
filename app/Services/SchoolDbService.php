@@ -52,7 +52,8 @@ class SchoolDbService
     }
 
     /**
-     * Homework is the only thing this API writes to a school's database, and only to hw_ tables.
+     * Writes to a school's database go through one connection per module, and each module writes
+     * only to its own tables: homework to hw_ tables, profile to app_stu_profile_change_request.
      * Everything else stays on the read-only connection above.
      */
     public function connectForHomework(string $dbName): Connection
@@ -61,6 +62,14 @@ class SchoolDbService
         DB::purge('tenant_homework');
 
         return DB::connection('tenant_homework');
+    }
+
+    public function connectForProfile(string $dbName): Connection
+    {
+        config(['database.connections.tenant_profile.database' => $dbName]);
+        DB::purge('tenant_profile');
+
+        return DB::connection('tenant_profile');
     }
 
     public function classes(School $school): Collection

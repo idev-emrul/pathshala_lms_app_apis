@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Attendance\StudentAttendanceController;
+use App\Http\Controllers\Attendance\TeacherAttendanceController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\StudentAuthController;
 use App\Http\Controllers\Auth\TeacherAuthController;
@@ -112,4 +114,22 @@ Route::middleware(['throttle:notice', 'jwt.app', 'tenant'])
         Route::post('/', [NoticeController::class, 'store'])->middleware(['notice:teacher', 'activity:publish_notice']);
         Route::get('audience-options', [NoticeAudienceController::class, 'index'])->middleware('notice:teacher');
         Route::post('{noticeId}/read', [NoticeController::class, 'read'])->middleware('notice')->where('noticeId', '(web-)?[0-9]+');
+    });
+
+// Module 10 - Students' Live Attendance Status (10.4, the PDF, is built by the app team)
+Route::middleware(['throttle:attendance', 'jwt.app', 'tenant', 'attendance:student'])
+    ->prefix('students/{studentId}/attendance')
+    ->whereNumber('studentId')
+    ->controller(StudentAttendanceController::class)
+    ->group(function () {
+        Route::get('/', 'month');
+        Route::get('report', 'report');
+        Route::get('summary', 'summary');
+    });
+
+Route::middleware(['throttle:attendance', 'jwt.app', 'tenant', 'attendance:teacher'])
+    ->controller(TeacherAttendanceController::class)
+    ->group(function () {
+        Route::get('teacher/attendance/register', 'show');
+        Route::post('teacher/attendance/register', 'store')->middleware('activity:submit_attendance');
     });

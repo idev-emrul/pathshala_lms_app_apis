@@ -1,8 +1,8 @@
 # Pathshala App API
 
-Laravel 12 API-only backend for the Pathshala mobile app. It has login for students and teachers, and the homework module for both. It has its own code but uses the same databases as the live Pathshala project.
+Laravel 12 API-only backend for the Pathshala mobile app. It has login for students and teachers, homework, and five modules of the app team's contract: class routine, student profile, results, notices and attendance. It has its own code but uses the same databases as the live Pathshala project.
 
-Last updated: 2 November 2026.
+Last updated: 3 November 2026.
 
 ## Status
 
@@ -11,9 +11,14 @@ Last updated: 2 November 2026.
 | Student login | Built |
 | Teacher login | Built, verified with one real account up to the PIN step |
 | Homework API (student and teacher) | Built, 14 routes |
+| Class routine (contract module 3) | Built, 2 routes |
+| Student profile (module 1) | Built, 3 routes |
+| Results (module 2) | Built, 4 routes |
+| Notices (module 5) | Built, 4 routes. No push yet |
+| Attendance (module 10) | Built, 5 routes. No SMS yet; 10.4 (PDF) is the app team's |
 | Activity log | Built, monthly files, changes only |
-| Tests | 80 passing at the last run |
-| Other 3 roles, SMS gateway, cloud uploads | Not built |
+| Tests | 118 passing at the last run, without `HomeworkApiTest` (see Tests) |
+| Other 3 roles (guardian, admin, staff login), SMS gateway, push, cloud uploads | Not built |
 
 ## Commands
 
@@ -32,7 +37,18 @@ php artisan otp:prune
 - **Never run `migrate:fresh` or `db:wipe` on the master database.** They would drop `school_information` and the other tables owned by the live project.
 - `db_school_api_web` already has an unrelated `migrations` table. This project tracks its own in `app_migrations`.
 - Migrations only ever run on the master database, never on a school database.
-- The school connection `tenant` is read-only. Only homework services write to a school, through `tenant_homework`, and only to `hw_` tables. This is a code rule, not a database permission.
+- The school connection `tenant` is read-only. Writes to a school go through one connection per module, and each writes only to its own tables. This is a code rule, not a database permission:
+
+  | Connection | Module | May write |
+  | --- | --- | --- |
+  | `tenant_homework` | Homework | `hw_` tables |
+  | `tenant_profile` | Profile | `app_stu_profile_change_request` |
+  | `tenant_result` | Results | `exam_overall_result.remarks_note` and `overall_dom` only (the teacher's comment) |
+  | `tenant_notice` | Notices | `app_notice`, `app_notice_read` |
+  | `tenant_attendance` | Attendance | the day columns `d1`..`d31`, `attendance_modifier`, `attendance_DOM` of `attendance_info` (and a new month row), `app_attendance_register_log` |
+
+  `exam_overall_result` and `attendance_info` are web tables. Write them only the way the web system does (see each module below).
+- New school tables of this project start with `app_`. They are not migrations: their `CREATE TABLE IF NOT EXISTS` SQL is run by hand on every school database (see Before going live).
 - Never write test data to a real school. `TestCase` refuses any master database except `pathshala_app_test`.
 - Never put secrets in a response or in a readable token field: `student_auth`, `users.password`, PIN, OTP, `db_name`, `api_code`, `school_secret`, `TOKEN_SALT`, `JWT_SECRET`.
 - `--pretend` on `php artisan migrate` still creates the migration table if it is missing.
@@ -60,14 +76,29 @@ One per school. The name comes from `school_information.db_name`. Test school: `
 | `users` | Teacher login: `username`, `password` (`$2a$` bcrypt), `user_type`, `activated`, `banned` |
 | `teacher_info` | Teacher profile. Some logins have `teacher_code` 0 and no row here |
 | `subject_teacher_info` | What a teacher teaches. `section_code` 0 means every section |
-| `session_info`, `class_info`, `section_info`, `shift_info`, `group_info`, `subject_info` | Lookups |
-| `institute_info` | `institute_EIIN` (upload folder), `institute_storage_path` (cloud base URL) |
+| `class_teacher_info` | Who is class teacher of a class / section / group / shift (0 = all) per session |
+| `session_info`, `class_info`, `section_info`, `shift_info`, `group_info`, `subject_info`, `subject_group` | Lookups. Exam subjects and routine subjects use `subject_group` |
+| `remission_info`, `category_info`, `religion_infos` | Profile lookups |
+| `institute_info` | `institute_EIIN` (upload folder), `institute_storage_path` (cloud base URL), `institute_website` |
+| `clr_routines`, `clr_periods`, `clr_days`, `clr_class_rooms` | Weekly class routine. `clr_days.status = 0` is a weekly off day |
+| `academic_calendar_info` | Holidays: `event_status = 1` and `event_attendance = 0` |
+| `exam_info`, `exam_class_info`, `exam_publication_info`, `exam_subject_info` | Exams of a class and session, and when they are published |
+| `exam_overall_result`, `subject_mark_info`, `combine_mark_info` | Stored results: totals, GPA, grade, position, subject marks |
+| `attendance_info` | One row per student row per month, day columns `d1`..`d31` |
+| `notice` | The school website's notices (read only) |
 | `hw_*` | Homework. See `doc_resource/hw_assignment_tables.md` |
+| `app_stu_profile_change_request` | This project. Profile correction requests (1.2) |
+| `app_notice`, `app_notice_read` | This project. Notices published from the app, and read marks |
+| `app_attendance_register_log` | This project. Every register submitted from the app (who, when, what) |
 
 Data traps:
 
 - `class_code` and class name do not match. In the test school, class Six is `class_code` 5 and class Five is `class_code` 6.
 - Several sessions can have `running_session = 1` at once. The test school has 5.
+- In the test school, `exam_overall_result`, `attendance_info` and `notice` have no primary key and no auto-increment, although their ids are unique. A copy for tests must give ids. Check the live tables before going live: a new `attendance_info` month row needs the auto-increment.
+- `exam_overall_result` has duplicate rows; the latest id wins. Rows with `status = 2` and `final_result = 1` are copies of the normal row and are ignored. A combined annual result is `status = 3`, `final_result = 1`, with its subject marks in `combine_mark_info`. `average_gpa` 5.33 is the web system's "golden A+" marker; the API shows 5.
+- `student_current_status_info.active_status`: 1 active, 2 transfer, 3 inactive, 4 promoted (an older year), 5 deleted.
+- `attendance_info` day codes: 0 not marked, 1 present, 2 absent, 3 leave, 4 holiday, 5 fugitive. There is no "late".
 
 ## Folder structure
 
@@ -76,20 +107,39 @@ app/Http/Controllers/
   SchoolController.php
   Auth/            AuthController, StudentAuthController, TeacherAuthController
   HwAssignment/    StudentHomeworkController, TeacherHomeworkController
+  ClassRoutine/    StudentRoutineController, TeacherRoutineController
+  StudentProfile/  StudentProfileController, TeacherClassListController
+  ResultReport/    StudentResultController, TeacherResultController
+  Notice/          NoticeController, NoticeAudienceController
+  Attendance/      StudentAttendanceController, TeacherAttendanceController
 app/Http/Middleware/
   AuthenticateAppToken    jwt.app: checks the token
   ConnectTenant           tenant: opens the school database
   AuthorizeHomework       homework:student or homework:teacher
+  AuthorizeRoutine        routine:student or routine:teacher
+  AuthorizeProfile        profile (both roles) or profile:student / profile:teacher
+  AuthorizeResult         result (both roles) or result:teacher
+  AuthorizeNotice         notice (both roles) or notice:teacher
+  AuthorizeAttendance     attendance:student or attendance:teacher
   RecordActivity          activity:action_name
 app/Services/
   OtpService, SchoolDbService, StudentAuthService, TeacherAuthService, TokenService, ActivityLogService
   HwAssignment/    HomeworkReader, SubmissionService, AssessmentService, AssignmentService,
                    IdempotencyService, HomeworkFiles, HomeworkTime, HomeworkCaller
+  ClassRoutine/    RoutineReader, RoutineCaller
+  StudentProfile/  ProfileReader, ChangeRequestService, ProfileCaller
+  ResultReport/    ResultReader, CommentService, ResultCaller
+  Notice/          NoticeReader, NoticeService, NoticeFiles, NoticeCaller
+  Attendance/      AttendanceReader, RegisterService, AttendanceCaller
 doc_resource/      Plans from the web system. hw_api_v1.md is the homework contract
-postman/           Pathshala_App_API (student login), Pathshala_Homework_API (login and homework)
+postman/           Pathshala_App_API (student login), Pathshala_Homework_API, and one collection per
+                   module: Pathshala_Routine_API, _Profile_API, _Result_API, _Notice_API, _Attendance_API
 public/auth-test.html   Test UI. Delete before going live
-tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, HomeworkApiTest
+tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, HomeworkApiTest,
+                   RoutineApiTest, ProfileApiTest, ResultApiTest, NoticeApiTest, AttendanceApiTest
 ```
+
+Every module follows the homework structure: its own controller and service folder, an `Authorize*` middleware that builds a `*Caller` from the token and the school database (never from the URL or body), a write connection only if it writes, a feature test and a Postman collection. A new module should do the same.
 
 `StudentAuthService` also holds the shared login code: set PIN, PIN login, logout, profile and the number checks.
 
@@ -98,6 +148,8 @@ tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, Hom
 - Every response is `{ "status": true, "message": "...", "data": {} }`. Errors have `status: false`, and `errors` for bad fields. Use `ApiResponse`.
 - Throw `ApiException` for expected failures. Do not expose SQL or database names.
 - `doc_resource/hw_api_v1.md` uses a different envelope, `{ "data": ... }` and `{ "error": ... }`. This project keeps its own envelope, and the fields inside `data` follow that doc.
+- The other modules follow the app team's contract `PATHSHALA_API_v1.pdf` (kept outside this repo) in the same way: its paths, fields, status codes and server rules, inside this project's envelope. Where the school has no data for a field, it is `null`.
+- Data the contract marks as sensitive stays masked: NID and birth registration are `{ masked, full }` with `full` always `null`.
 - Homework ids are strings. Dates in the API are UTC, and the database stores `Asia/Dhaka`. Use `HomeworkTime`.
 - Folder and namespace names are StudlyCase, because the live server may be case-sensitive.
 
@@ -178,11 +230,81 @@ Base: `/api/v1`. Bearer token required. Verified users only, so guests get 403. 
 - Paths match the web system: `<EIIN>/homework/assignment|submission/<file>`.
 - A file on the local disk gets a local URL. Otherwise the URL is `institute_storage_path` + path, so files from the web still open.
 
+## Contract modules
+
+Base: `/api/v1`. Bearer token required. Verified users only, so guests get 403. Teacher logins are re-checked on every request. A student `{studentId}` is always a `current_status_info_id` (from `/auth/me` as `placement.homework_student_id`), and a student can only use their own. A teacher's classes are their `class_teacher_info` (and for some checks `subject_teacher_info`) rows in running sessions; a section / group / shift of 0 means all.
+
+### Class routine (module 3)
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/students/{studentId}/routine?date=YYYY-MM-DD` | Student |
+| GET | `/teachers/{teacherId}/routine?date=YYYY-MM-DD` | Teacher. `{teacherId}` is the caller's own `app_user.id` (`user.id` from Set PIN or `/auth/me`); any other id is 403 |
+
+- The weekly timetable for the date's weekday. A weekly off day or a holiday returns `[]`.
+- A routine row with section / group / shift / medium 0 is for everyone in the class.
+- A teacher's routine covers every running session.
+- `status` and `status_reason` are always null and there are no breaks: the school has no per-date changes.
+
+### Student profile (module 1)
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/students/{studentId}/profile` | The student, or a class or subject teacher of the student (others 403) |
+| POST | `/students/{studentId}/profile/change-requests` | Active students only. Body `{ field, requested_value, note }`. `activity:request_profile_change` |
+| GET | `/teacher/my-class/students` | Class teacher. Not a class teacher: `[]` |
+
+- The profile is the student's current placement: the latest active row, else the latest transfer or inactive row. An older own row shows the current one. Deleted rows are 404.
+- A teacher does not get guardian mobile, email or NID.
+- A correction request never changes the profile. It is stored as JSON with a snapshot of the placement in `app_stu_profile_change_request`, status 0 (pending). The same `Idempotency-Key` is one request (200 with `Idempotent-Replayed: true`).
+
+### Results (module 2)
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/students/{studentId}/results` | The student, or a class or subject teacher of the student |
+| GET | `/teacher/my-class/exams` | Class teacher. Oldest first, with `published`, `pending` or `processing` |
+| GET | `/teacher/my-class/exams/{examId}` | Class teacher. Another class's exam 403, unknown 404 |
+| PUT | `/teacher/my-class/exams/{examId}/students/{studentId}/comment` | Class teacher. Body `{ comment }`, at most 300 characters. `activity:comment_result` |
+
+- `{examId}` is `exam_class_id`. Students see an exam only when `published_exam = 1`, `web_pub_date` has come and `examclass_status = 0` (no marks edited after the merit list). Admission tests and EVS evaluations are left out. A combined annual result is an extra exam with id `{examId}-combined`.
+- Figures are the stored ones. Position, class size and class average are for the student's section. Total marks are `exam_total_mark`, else the student's counted subjects (`no_add_table = 0`).
+- `rank_visible` and `class_average_visible` are always true; `marksheet_url` and `transcript_url` are null.
+- The comment is saved as the web comment screen saves it: `remarks_note` with `addslashes`, on every row of that student's exam. It needs the result row (merit list submitted), else 403.
+
+### Notices (module 5)
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/notices` | Student or teacher |
+| POST | `/notices/{noticeId}/read` | Student or teacher. A repeat is harmless |
+| GET | `/notices/audience-options` | Teacher: own classes with sections, groups, custom categories |
+| POST | `/notices` | Teacher, multipart. `activity:publish_notice` |
+
+- The feed is the caller's app notices plus the school website's public notices (`notice` type 1, `showDocument` 1), ids like `web-22`. Newest first; future publish dates hidden; expired ones kept.
+- A notice reaches a reader when its role matches (students, teachers, staff from `employee_type` 2) and its classes / sections / groups (comma lists, empty = all) fit. A notice for some classes reaches the teachers of those classes.
+- A teacher may only send to classes they teach (else 403). Lists come as `name[]` or one comma-separated value. Same `Idempotency-Key`: the first notice. Files: 5 MB each, stored like homework files under `<EIIN>/app/notices/`.
+- Read marks are per reader in `app_notice_read`. There is no guardian login yet, so the guardian fields of a feed item are null. No push is sent.
+
+### Attendance (module 10)
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/students/{studentId}/attendance/report?from=&to=` | Student. A duration, as the web profile's search. Without dates: session start to today |
+| GET | `/students/{studentId}/attendance?month=YYYY-MM` | Student. Every day up to today |
+| GET | `/students/{studentId}/attendance/summary` | Student. The session, with a monthly chart |
+| GET | `/teacher/attendance/register?date=&section_id=` | Class teacher |
+| POST | `/teacher/attendance/register` | Class teacher. Body `{ section_id, date, marks: [{ student_id, status }] }`. `activity:submit_attendance` |
+
+- Counts follow the web profile: holidays are calendar holidays plus weekly off days; pending = working days - (present + absent); each percentage is its count / (present + absent + leave + fugitive + pending). The school has no terms, so `terms` is `[]`.
+- The register id `section_id` is `session-class-section-group-shift`. Marks are `present`, `absent` or `fugitive`; a day already on leave stays leave; a future date is 422. Each mark goes into the day column of `attendance_info`; a month that was not set up gets its row. Every submission is logged in `app_attendance_register_log`, which also gives `marked_by` and `marked_at`. Same `Idempotency-Key`: written once.
+- No SMS is sent yet (the web register can send absent / present / fugitive SMS).
+
 ## Activity log
 
 File: `storage/logs/activity/activity_YYYY_MM.log`, one JSON line per event, one file per month.
 
-Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
+Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `request_profile_change`, `comment_result`, `publish_notice`, `submit_attendance`. Notice read marks are not logged. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
 
 ```json
 {"time":"2026-11-02 14:10:00","app_user_id":1,"role":"teacher","action":"create_homework","message":"Hasan created homework: Algebra","details":{"homeworkId":"3"},"ip_address":"127.0.0.1"}
@@ -194,19 +316,21 @@ Never log answers, marks, feedback, passwords, tokens or `db_name`. Login, logou
 
 `.env` needs `APP_KEY`, the `DB_*` values, `JWT_SECRET`, `TOKEN_SALT`, `OTP_DRIVER`, `OTP_FIXED`, and optionally `FLOW_TOKEN_TTL`, `HW_FILES_DISK`, `HW_FILES_URL`, `ACTIVITY_LOG_PATH`.
 
-Rate limits: auth routes 30 a minute, homework routes 120 a minute, both per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait.
+Rate limits: auth routes 30 a minute; homework, routine, profile, result, notice and attendance routes 120 a minute each; all per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait.
 
 ## Tests
 
 - `pathshala_app_test` is the master test database.
-- `pathshala_app_test_school` is created by `HomeworkApiTest`, with the structure of the real tables and made-up rows. All homework writes in tests go here.
+- `pathshala_app_test_school` is created by `HomeworkApiTest` and the module tests, with the structure of the real tables and made-up rows. All module writes in tests go here. Each module test copies only the tables it needs and gives its own `school_information` row (schl_id 78 to 82).
+- The copies come from `pathshala_borderguardsylhet`, so the `app_` tables must exist there too (see Before going live).
 - Login tests read real school data through the read-only connection, and write nothing to it.
 - Real teacher passwords are unknown, so the login test uses a stand-in account with a `$2a$` hash.
+- On XAMPP's MariaDB, strict mode refuses the old `0000-00-00` defaults when seeding. The module tests set `sql_mode = ''` on their seeding connection. `HomeworkApiTest` does not yet, so it fails there (it passes on MySQL 8 / Laragon).
 - Run the full suite after any change.
 
 ## Test UI
 
-`public/auth-test.html` at `http://127.0.0.1:8000/auth-test.html` covers student login, teacher login and the teacher homework panel, with an API log. There is no student homework panel yet, so use Postman for hand-ins. Reloading the page loses the token. It calls the real API, so anything created there is real data.
+`public/auth-test.html` at `http://127.0.0.1:8000/auth-test.html` covers student login, teacher login and the teacher homework panel, with an API log. After login it also has a box per module: class routine, student profile and correction request, results and the teacher comment, notices (feed, read, audience options, publish with files), and attendance (report, month, summary, register). Each uses the caller's own id from `/auth/me`. There is no student homework panel yet, so use Postman for hand-ins. Reloading the page loses the token. It calls the real API, so anything created there is real data.
 
 ## Before going live
 
@@ -215,7 +339,9 @@ Rate limits: auth routes 30 a minute, homework routes 120 a minute, both per IP.
 3. Add cloud bucket credentials. Until then the web system cannot see files uploaded here.
 4. Use a long random `TOKEN_SALT`. The current one is short and has been shared in chat.
 5. Change the password of `idev_emrulbd`, which was shared in chat. Its `user_type` was changed to `Teacher`, so check whether it should be Admin.
-6. Limit the database user. The `hw_`-only write rule is only in code.
+6. Limit the database user. The per-module write rules (see Safety rules) are only in code.
+7. Create the `app_` tables on every school database: `app_stu_profile_change_request`, `app_notice`, `app_notice_read`, `app_attendance_register_log`. Each is `CREATE TABLE IF NOT EXISTS`, kept outside this repo.
+8. Check that `attendance_info.attendance_id` and `exam_overall_result.exam_overall_result_id` are auto-increment on the live school databases (they are not in the test school).
 
 ## Open items
 
@@ -228,11 +354,16 @@ Rate limits: auth routes 30 a minute, homework routes 120 a minute, both per IP.
 - Activity files are never removed, and are separate on each server.
 - Confirm the session rule for create, since several sessions can be running.
 - The app team must confirm the response envelope against the homework doc.
+- No guardian or admin login: guardian feeds and admin notice sending are not built.
+- No push (notices) and no SMS (attendance register). Both are marked TODO in the services.
+- No PDFs from the server: marksheet, transcript and attendance report (10.4) are null or not built.
+- Notice attachments use the local disk until bucket credentials are added, like homework files.
+- Confirm with the app team: section-wise position / size / average in results, `{examId}-combined`, `?from` / `?to` instead of terms in the attendance report, and `app_user.id` as `{teacherId}` in the teacher routine.
 
 ## Out-of-date docs
 
 These do not yet match the code:
 
 - `pathshala_app_authentication.md` and `.docx`: per-user salt, "Forgot password", "Verification failed", no teacher or homework.
-- `README.md`: says Phase 1 only, and that the API cannot write to school databases.
+- `README.md`: says Phase 1 only, and that the API cannot write to school databases. It also lists only the first Postman collection.
 - `postman/Pathshala_App_API.postman_collection.json`: student flow only, no `reset_pin`.

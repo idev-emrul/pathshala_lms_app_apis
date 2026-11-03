@@ -181,6 +181,19 @@
             <label>Files (optional) <input id="notice-files" type="file" multiple></label>
             <button type="button" class="alt" id="publish-notice">POST publish notice (teacher)</button>
             <p class="hint">A teacher can only send to the classes in their audience options. No push notification is sent yet. The response is in the API log.</p>
+
+            <h3>Attendance</h3>
+            <label>From <input id="att-from" type="date"></label>
+            <label>To <input id="att-to" type="date"></label>
+            <button type="button" id="load-att-report">GET report (student)</button>
+            <label>Month <input id="att-month" type="month"></label>
+            <button type="button" class="alt" id="load-att-month">GET month (student)</button>
+            <button type="button" class="alt" id="load-att-summary">GET summary (student)</button>
+            <label>Register date <input id="att-register-date" type="date"></label>
+            <button type="button" class="alt" id="load-att-register">GET register (teacher)</button>
+            <label>Marks: student_id=status, comma list (present, absent, fugitive) <input id="att-marks" placeholder="e.g. 3837=present,3838=absent"></label>
+            <button type="button" class="alt" id="submit-att-register">POST register (teacher)</button>
+            <p class="hint">Empty From / To = the session start to today. The register uses its date and the section_id from GET register. The response is in the API log.</p>
         </div>
 
         <div id="step-hw" class="step" hidden>
@@ -722,6 +735,56 @@ $('publish-notice').addEventListener('click', () => {
     [...$('notice-files').files].forEach((file) => form.append('files[]', file));
 
     return call('POST', '/notices', form, token, { 'Idempotency-Key': 'notice-' + Date.now() });
+});
+
+// Attendance (module 10).
+$('att-month').value = new Date().toISOString().slice(0, 7);
+$('att-register-date').value = new Date().toISOString().slice(0, 10);
+let registerSectionId = null;
+
+async function ownStudentId() {
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return null;
+    if (!me.placement) {
+        notify('This student has no current class, so there is no attendance id', false);
+        return null;
+    }
+    return me.placement.homework_student_id;
+}
+
+$('load-att-report').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (!id) return;
+    const query = new URLSearchParams();
+    if ($('att-from').value) query.set('from', $('att-from').value);
+    if ($('att-to').value) query.set('to', $('att-to').value);
+    await call('GET', '/students/' + id + '/attendance/report' + (query.toString() ? '?' + query : ''), null, token);
+});
+
+$('load-att-month').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (id) await call('GET', '/students/' + id + '/attendance?month=' + $('att-month').value, null, token);
+});
+
+$('load-att-summary').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (id) await call('GET', '/students/' + id + '/attendance/summary', null, token);
+});
+
+$('load-att-register').addEventListener('click', async () => {
+    const data = await call('GET', '/teacher/attendance/register?date=' + $('att-register-date').value, null, token);
+    if (data) registerSectionId = data.section_id;
+});
+
+$('submit-att-register').addEventListener('click', () => {
+    if (!registerSectionId) return notify('Run GET register first, for the section_id', false);
+
+    const marks = $('att-marks').value.split(',').map((pair) => pair.trim()).filter(Boolean).map((pair) => {
+        const [student_id, status] = pair.split('=').map((part) => part.trim());
+        return { student_id, status };
+    });
+
+    return call('POST', '/teacher/attendance/register', { section_id: registerSectionId, date: $('att-register-date').value, marks }, token, { 'Idempotency-Key': 'register-' + Date.now() });
 });
 
 // Teacher homework panel

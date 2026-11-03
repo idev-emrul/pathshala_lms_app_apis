@@ -15,10 +15,10 @@ Last updated: 3 November 2026.
 | Student profile (module 1) | Built, 3 routes |
 | Results (module 2) | Built, 4 routes |
 | Notices (module 5) | Built, 4 routes. No push yet |
-| Attendance (module 10) | Built, 5 routes. No SMS yet; 10.4 (PDF) is the app team's |
+| Attendance (module 10) | Built, 5 routes, with guardian SMS from the register. 10.4 (PDF) is the app team's |
 | Activity log | Built, monthly files, changes only |
-| Tests | 118 passing at the last run, without `HomeworkApiTest` (see Tests) |
-| Other 3 roles (guardian, admin, staff login), SMS gateway, push, cloud uploads | Not built |
+| Tests | 121 passing at the last run, without `HomeworkApiTest` (see Tests) |
+| Other 3 roles (guardian, admin, staff login), OTP SMS gateway, push, cloud uploads | Not built |
 
 ## Commands
 
@@ -45,9 +45,9 @@ php artisan otp:prune
   | `tenant_profile` | Profile | `app_stu_profile_change_request` |
   | `tenant_result` | Results | `exam_overall_result.remarks_note` and `overall_dom` only (the teacher's comment) |
   | `tenant_notice` | Notices | `app_notice`, `app_notice_read` |
-  | `tenant_attendance` | Attendance | the day columns `d1`..`d31`, `attendance_modifier`, `attendance_DOM` of `attendance_info` (and a new month row), `app_attendance_register_log` |
+  | `tenant_attendance` | Attendance | the day columns `d1`..`d31`, `attendance_modifier`, `attendance_DOM` of `attendance_info` (and a new month row), `app_attendance_register_log`, new rows in `message_receiver_info` (the web SMS log) |
 
-  `exam_overall_result` and `attendance_info` are web tables. Write them only the way the web system does (see each module below).
+  `exam_overall_result`, `attendance_info` and `message_receiver_info` are web tables. Write them only the way the web system does (see each module below).
 - New school tables of this project start with `app_`. They are not migrations: their `CREATE TABLE IF NOT EXISTS` SQL is run by hand on every school database (see Before going live).
 - Never write test data to a real school. `TestCase` refuses any master database except `pathshala_app_test`.
 - Never put secrets in a response or in a readable token field: `student_auth`, `users.password`, PIN, OTP, `db_name`, `api_code`, `school_secret`, `TOKEN_SALT`, `JWT_SECRET`.
@@ -130,7 +130,8 @@ app/Services/
   StudentProfile/  ProfileReader, ChangeRequestService, ProfileCaller
   ResultReport/    ResultReader, CommentService, ResultCaller
   Notice/          NoticeReader, NoticeService, NoticeFiles, NoticeCaller
-  Attendance/      AttendanceReader, RegisterService, AttendanceCaller
+  Attendance/      AttendanceReader, RegisterService, AttendanceSms, AttendanceCaller
+  Sms/             SmsGateway (the school's own SMS gateway, a port of the web Sms_lib)
 doc_resource/      Plans from the web system. hw_api_v1.md is the homework contract
 postman/           Pathshala_App_API (student login), Pathshala_Homework_API, and one collection per
                    module: Pathshala_Routine_API, _Profile_API, _Result_API, _Notice_API, _Attendance_API
@@ -298,7 +299,7 @@ Base: `/api/v1`. Bearer token required. Verified users only, so guests get 403. 
 
 - Counts follow the web profile: holidays are calendar holidays plus weekly off days; pending = working days - (present + absent); each percentage is its count / (present + absent + leave + fugitive + pending). The school has no terms, so `terms` is `[]`.
 - The register id `section_id` is `session-class-section-group-shift`. Marks are `present`, `absent` or `fugitive`; a day already on leave stays leave; a future date is 422. Each mark goes into the day column of `attendance_info`; a month that was not set up gets its row. Every submission is logged in `app_attendance_register_log`, which also gives `marked_by` and `marked_at`. Same `Idempotency-Key`: written once.
-- No SMS is sent yet (the web register can send absent / present / fugitive SMS).
+- Guardian SMS (`AttendanceSms`, gateway in `Services/Sms/SmsGateway`, a port of the web `Sms_lib`): sent after the response (`defer`), only when `SMS_ENABLED=true`, only for today's date, and only for a student whose status changed. Each status needs the school's active `message_info` template (type 6 present, 7 absent, 8 fugitive), with the web's `@` tags. Gateway, on/off and balance come from `pathshala.cloud` and `isms.itlab.solutions` as on the web; there is no default key, and SSL is checked. Each SMS is logged in `message_receiver_info`, so the web balance counts it. A failure never affects the register.
 
 ## Activity log
 
@@ -314,7 +315,7 @@ Never log answers, marks, feedback, passwords, tokens or `db_name`. Login, logou
 
 ## Environment
 
-`.env` needs `APP_KEY`, the `DB_*` values, `JWT_SECRET`, `TOKEN_SALT`, `OTP_DRIVER`, `OTP_FIXED`, and optionally `FLOW_TOKEN_TTL`, `HW_FILES_DISK`, `HW_FILES_URL`, `ACTIVITY_LOG_PATH`.
+`.env` needs `APP_KEY`, the `DB_*` values, `JWT_SECRET`, `TOKEN_SALT`, `OTP_DRIVER`, `OTP_FIXED`, and optionally `FLOW_TOKEN_TTL`, `HW_FILES_DISK`, `HW_FILES_URL`, `ACTIVITY_LOG_PATH`, `SMS_ENABLED` (default false: no real SMS), `SMS_WEB_TOKEN_URL`, `SMS_ISMS_URL`.
 
 Rate limits: auth routes 30 a minute; homework, routine, profile, result, notice and attendance routes 120 a minute each; all per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait.
 
@@ -340,8 +341,9 @@ Rate limits: auth routes 30 a minute; homework, routine, profile, result, notice
 4. Use a long random `TOKEN_SALT`. The current one is short and has been shared in chat.
 5. Change the password of `idev_emrulbd`, which was shared in chat. Its `user_type` was changed to `Teacher`, so check whether it should be Admin.
 6. Limit the database user. The per-module write rules (see Safety rules) are only in code.
-7. Create the `app_` tables on every school database: `app_stu_profile_change_request`, `app_notice`, `app_notice_read`, `app_attendance_register_log`. Each is `CREATE TABLE IF NOT EXISTS`, kept outside this repo.
-8. Check that `attendance_info.attendance_id` and `exam_overall_result.exam_overall_result_id` are auto-increment on the live school databases (they are not in the test school).
+7. Create the `app_` tables on every school database: `app_stu_profile_change_request`, `app_notice`, `app_notice_read`, `app_attendance_register_log`. Each is `CREATE TABLE IF NOT EXISTS`; the SQL is in the module docs in `doc_resource/` (`profile_api_v1.md`, `notice_api_v1.md`, `attendance_api_v1.md`).
+8. Check that `attendance_info.attendance_id`, `exam_overall_result.exam_overall_result_id` and `message_receiver_info.msg_receiver_id` are auto-increment on the live school databases (they are not in the test school).
+9. Set `SMS_ENABLED=true` on the live server only, for attendance SMS.
 
 ## Open items
 
@@ -355,7 +357,8 @@ Rate limits: auth routes 30 a minute; homework, routine, profile, result, notice
 - Confirm the session rule for create, since several sessions can be running.
 - The app team must confirm the response envelope against the homework doc.
 - No guardian or admin login: guardian feeds and admin notice sending are not built.
-- No push (notices) and no SMS (attendance register). Both are marked TODO in the services.
+- No push for notices (TODO in `NoticeService`).
+- Attendance SMS has not been sent through a real gateway yet: test it once on the live server with one student.
 - No PDFs from the server: marksheet, transcript and attendance report (10.4) are null or not built.
 - Notice attachments use the local disk until bucket credentials are added, like homework files.
 - Confirm with the app team: section-wise position / size / average in results, `{examId}-combined`, `?from` / `?to` instead of terms in the attendance report, and `app_user.id` as `{teacherId}` in the teacher routine.

@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\AppUser;
+use App\Services\HwAssignment\HomeworkTime;
 use App\Services\TokenService;
 use Illuminate\Database\Connection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -36,6 +39,7 @@ class AttendanceApiTest extends TestCase
     private const COPIED_TABLES = [
         'attendance_info', 'app_attendance_register_log', 'clr_days', 'academic_calendar_info', 'student_info',
         'student_current_status_info', 'session_info', 'class_info', 'section_info', 'class_teacher_info', 'teacher_info', 'users',
+        'institute_info', 'message_info', 'message_receiver_info', 'message_stock_info',
     ];
 
     private static bool $schoolCreated = false;
@@ -204,6 +208,90 @@ class AttendanceApiTest extends TestCase
         $this->withToken($this->studentToken)->getJson('/api/v1/teacher/attendance/register?date=2026-05-10')->assertStatus(403);
     }
 
+    public function test_guardians_get_an_sms_for_a_status_that_changed_today(): void
+    {
+        $this->fakeSmsGateway();
+        $today = HomeworkTime::today();
+
+        $this->submit($today, [
+            ['student_id' => (string) self::STUDENT_ROW, 'status' => 'present'],
+            ['student_id' => (string) self::CLASSMATE_ROW, 'status' => 'absent'],
+        ], 'sms-1')->assertOk();
+
+        $sent = $this->sentSms();
+        $this->assertSame(['8801711000001', '8801711000002'], array_column($sent, 'number'));
+        $this->assertSame('Rahim (009501) Eight-A roll 12 is PRESENT on '.Carbon::parse($today)->format('d-m-Y'), $sent[0]['message']);
+        $this->assertSame('Maria is ABSENT', $sent[1]['message']);
+
+        $log = $this->school()->table('message_receiver_info')->orderBy('receiver_id')->get();
+        $this->assertCount(2, $log);
+        $this->assertSame([self::STUDENT_ROW, self::CLASSMATE_ROW], $log->pluck('receiver_id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame([6, 7], $log->pluck('message_id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame('m-1', $log[0]->message_response_id);
+        $this->assertSame(self::TEACHER_USER, (int) $log[0]->msg_sender);
+        $this->assertSame(1, (int) $log[0]->msg_delivered);
+
+        // A correction: the unchanged status gets no second SMS; fugitive has no template here.
+        $this->submit($today, [
+            ['student_id' => (string) self::STUDENT_ROW, 'status' => 'present'],
+            ['student_id' => (string) self::CLASSMATE_ROW, 'status' => 'fugitive'],
+        ], 'sms-2')->assertOk();
+
+        $this->assertCount(2, $this->sentSms());
+        $this->assertSame(2, $this->school()->table('message_receiver_info')->count());
+    }
+
+    public function test_no_sms_for_another_day_or_when_switched_off(): void
+    {
+        $this->fakeSmsGateway();
+        $this->submit('2026-05-10', [['student_id' => (string) self::CLASSMATE_ROW, 'status' => 'absent']], 'sms-3')->assertOk();
+
+        config(['pathshala.sms.enabled' => false]);
+        $this->submit(HomeworkTime::today(), [['student_id' => (string) self::CLASSMATE_ROW, 'status' => 'absent']], 'sms-4')->assertOk();
+
+        $this->assertSame([], $this->sentSms());
+        $this->assertSame(0, $this->school()->table('message_receiver_info')->count());
+    }
+
+    public function test_no_sms_without_balance(): void
+    {
+        $this->fakeSmsGateway(recharged: '0');
+        $this->submit(HomeworkTime::today(), [['student_id' => (string) self::STUDENT_ROW, 'status' => 'absent']], 'sms-5')->assertOk();
+
+        $this->assertSame([], $this->sentSms());
+        $this->assertSame(0, $this->school()->table('message_receiver_info')->count());
+    }
+
+    /**
+     * The school's token, credentials and balance as the web services give them, and SylSMS (105).
+     */
+    private function fakeSmsGateway(string $recharged = '100'): void
+    {
+        // The SMS step is deferred until after the response; in a test it runs at once.
+        $this->withoutDefer();
+        config(['pathshala.sms.enabled' => true]);
+        Http::fake([
+            'pathshala.cloud/*' => Http::response('"TEST-TOKEN"'),
+            'isms.itlab.solutions/api/get_client_sms_status/*' => Http::response(['sms_service' => 1, 'sms_delivery_report_api' => 0]),
+            'isms.itlab.solutions/api/get_client_smsAPI/*' => Http::response([[
+                'sms_type' => 1,
+                'client_api_credentials' => json_encode(['senderID' => '8800000000000', 'apiKey' => 'test-key', 'apiToken' => '']),
+                'api_version_credentials' => '',
+                'sms_api_version_id' => 105,
+            ]]),
+            'isms.itlab.solutions/api/get_client_recharge_by_daterange/*' => Http::response($recharged),
+            'web.sylsms.xyz/*' => Http::response(['message_id' => 'm-1']),
+        ]);
+    }
+
+    private function sentSms(): array
+    {
+        return Http::recorded(fn ($request) => str_contains($request->url(), 'sylsms'))
+            ->map(fn ($pair) => ['number' => $pair[0]['number'], 'message' => $pair[0]['message']])
+            ->values()
+            ->all();
+    }
+
     private function submit(string $date, array $marks, ?string $key = null): \Illuminate\Testing\TestResponse
     {
         return $this->withToken($this->teacherToken)
@@ -309,9 +397,16 @@ class AttendanceApiTest extends TestCase
             'section_code' => self::SECTION_A, 'group_code' => 0, 'shift_code' => 0, 'master_teacher' => '1',
         ]);
         $db->table('student_info')->insert([
-            ['student_registration_code' => 9501, 'student_name' => 'Rahim'],
-            ['student_registration_code' => 9502, 'student_name' => 'Maria'],
-            ['student_registration_code' => 9503, 'student_name' => 'Nadia'],
+            ['student_registration_code' => 9501, 'student_name' => 'Rahim', 'contact_number' => '01711000001'],
+            ['student_registration_code' => 9502, 'student_name' => 'Maria', 'contact_number' => '01711000002'],
+            ['student_registration_code' => 9503, 'student_name' => 'Nadia', 'contact_number' => '01711000003'],
+        ]);
+        $db->table('institute_info')->insert(['institute_EIIN' => '999999']);
+        // SMS templates: present (6) and absent (7). No fugitive (8) template, so fugitive sends nothing.
+        $db->table('message_info')->insert([
+            ['message_id' => 6, 'message_type' => 6, 'message_status' => 1, 'message_description' => '@student_name (@student_id) @student_class-@student_section roll @student_roll is @attendance_status on @attendance_date'],
+            ['message_id' => 7, 'message_type' => 7, 'message_status' => 1, 'message_description' => '@student_name is @attendance_status'],
+            ['message_id' => 8, 'message_type' => 8, 'message_status' => 0, 'message_description' => 'inactive'],
         ]);
         $row = fn (array $values) => $values + ['session_code' => self::SESSION, 'class_code' => self::CLASS_ID, 'section_code' => self::SECTION_A, 'group_code' => 0, 'shift_code' => 0, 'active_status' => 1];
         $db->table('student_current_status_info')->insert([

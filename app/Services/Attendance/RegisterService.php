@@ -9,13 +9,16 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
+use function Illuminate\Support\defer;
+
 /**
  * 10.6 The class teacher submits the register. Each mark is written into the day column of
  * attendance_info, as the web register does; a month that was not set up yet gets its row, as the
  * web month setup creates it. Every submission is kept in app_attendance_register_log (who, when,
  * from the app). A later submission for the same day is a correction with its own key.
  *
- * No SMS is sent yet. A day already on leave stays leave.
+ * A day already on leave stays leave. Guardians get an SMS for each status that changed, after the
+ * response is sent (AttendanceSms).
  */
 class RegisterService
 {
@@ -25,6 +28,7 @@ class RegisterService
     public function __construct(
         private SchoolDbService $schools,
         private AttendanceReader $reader,
+        private AttendanceSms $sms,
     ) {}
 
     /**
@@ -124,7 +128,20 @@ class RegisterService
             return false;
         }
 
-        // TODO: absent / present / fugitive SMS to guardians, as the web register does.
+        // Only a status that changed gets an SMS: one per student per day unless it changes (contract 10.6).
+        $changed = [];
+        foreach ($valid as $mark) {
+            $id = (int) $mark['student']->current_status_info_id;
+
+            if (($current[$id] ?? 0) !== $mark['code']) {
+                $changed[$id] = $mark['code'];
+            }
+        }
+
+        // After the response, so a slow or failing gateway never holds up or fails the register.
+        if ($changed) {
+            defer(fn () => $this->sms->send($caller->dbName, $userId, $date, $changed));
+        }
 
         return true;
     }

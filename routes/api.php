@@ -7,6 +7,8 @@ use App\Http\Controllers\ClassRoutine\StudentRoutineController;
 use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
 use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
+use App\Http\Controllers\ResultReport\StudentResultController;
+use App\Http\Controllers\ResultReport\TeacherResultController;
 use App\Http\Controllers\SchoolController;
 use App\Http\Controllers\StudentProfile\StudentProfileController;
 use App\Http\Controllers\StudentProfile\TeacherClassListController;
@@ -84,3 +86,18 @@ Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:student', '
 
 Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:teacher'])
     ->get('teacher/my-class/students', [TeacherClassListController::class, 'index']);
+
+// Module 2 - Result Performance Report
+Route::middleware(['throttle:result', 'jwt.app', 'tenant', 'result'])
+    ->get('students/{studentId}/results', [StudentResultController::class, 'index'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:result', 'jwt.app', 'tenant', 'result:teacher'])
+    ->prefix('teacher/my-class/exams')
+    ->whereNumber(['examId', 'studentId'])
+    ->controller(TeacherResultController::class)
+    ->group(function () {
+        Route::get('/', 'exams');
+        Route::get('{examId}', 'exam');
+        Route::put('{examId}/students/{studentId}/comment', 'comment')->middleware('activity:comment_result');
+    });

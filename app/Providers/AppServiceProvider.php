@@ -27,5 +27,6 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('homework', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
         RateLimiter::for('routine', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
         RateLimiter::for('profile', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        RateLimiter::for('result', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
     }
 }

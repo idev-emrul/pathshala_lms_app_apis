@@ -40,6 +40,11 @@ return [
             'database' => null,
         ],
 
+        // The same school, used only for writing the teacher's result comment. See SchoolDbService.
+        'tenant_result' => $mysql + [
+            'database' => null,
+        ],
+
     ],
 
     // db_school_api_web already has an unrelated `migrations` table, so this

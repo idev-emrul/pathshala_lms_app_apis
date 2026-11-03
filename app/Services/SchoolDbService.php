@@ -53,7 +53,8 @@ class SchoolDbService
 
     /**
      * Writes to a school's database go through one connection per module, and each module writes
-     * only to its own tables: homework to hw_ tables, profile to app_stu_profile_change_request.
+     * only to its own tables: homework to hw_ tables, profile to app_stu_profile_change_request,
+     * results to exam_overall_result.remarks_note (the teacher's comment) only.
      * Everything else stays on the read-only connection above.
      */
     public function connectForHomework(string $dbName): Connection
@@ -70,6 +71,14 @@ class SchoolDbService
         DB::purge('tenant_profile');
 
         return DB::connection('tenant_profile');
+    }
+
+    public function connectForResult(string $dbName): Connection
+    {
+        config(['database.connections.tenant_result.database' => $dbName]);
+        DB::purge('tenant_result');
+
+        return DB::connection('tenant_result');
     }
 
     public function classes(School $school): Collection

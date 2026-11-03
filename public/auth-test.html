@@ -150,6 +150,16 @@
             <label>Note <input id="change-note" placeholder="Optional"></label>
             <button type="button" id="send-change">POST correction request</button>
             <p class="hint">Saved for the school to review; the profile does not change. Sending the same request again in a row reuses its Idempotency-Key, so it is stored once.</p>
+
+            <h3>Results</h3>
+            <button type="button" id="load-results">GET my results (student)</button>
+            <button type="button" class="alt" id="load-class-exams">GET my class exams (teacher)</button>
+            <label>Exam id <input id="result-exam-id" inputmode="numeric" placeholder="An id from my class exams"></label>
+            <button type="button" class="alt" id="load-result-sheet">GET result sheet (teacher)</button>
+            <label>Student id <input id="result-student-id" inputmode="numeric" placeholder="A student_id from the result sheet"></label>
+            <label>Comment <input id="result-comment" placeholder="Printed on the transcript"></label>
+            <button type="button" class="alt" id="save-result-comment">PUT comment (teacher)</button>
+            <p class="hint">Teacher: GET my class exams, put an exam id above, GET result sheet, then put a student_id from it and a comment. The response is in the API log.</p>
         </div>
 
         <div id="step-hw" class="step" hidden>
@@ -631,6 +641,32 @@ $('send-change').addEventListener('click', async () => {
     }
 
     await call('POST', '/students/' + me.placement.homework_student_id + '/profile/change-requests', body, token, { 'Idempotency-Key': changeKey });
+});
+
+// Results (module 2).
+$('load-results').addEventListener('click', async () => {
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return;
+    if (!me.placement) return notify('Only a student with a current class has a results id', false);
+
+    await call('GET', '/students/' + me.placement.homework_student_id + '/results', null, token);
+});
+
+$('load-class-exams').addEventListener('click', () => call('GET', '/teacher/my-class/exams', null, token));
+
+$('load-result-sheet').addEventListener('click', () => {
+    const exam = $('result-exam-id').value.trim();
+    if (!exam) return notify('Enter an exam id from "my class exams"', false);
+
+    return call('GET', '/teacher/my-class/exams/' + encodeURIComponent(exam), null, token);
+});
+
+$('save-result-comment').addEventListener('click', () => {
+    const exam = $('result-exam-id').value.trim();
+    const student = $('result-student-id').value.trim();
+    if (!exam || !student) return notify('Enter the exam id and a student_id from the result sheet', false);
+
+    return call('PUT', '/teacher/my-class/exams/' + encodeURIComponent(exam) + '/students/' + encodeURIComponent(student) + '/comment', { comment: $('result-comment').value }, token);
 });
 
 // Teacher homework panel

@@ -132,6 +132,11 @@
             <button type="button" class="alt" id="old-token" hidden>Try old token</button>
             <button type="button" id="open-homework" hidden>Open homework</button>
             <p class="hint" id="homework-guest" hidden>Guest teachers have no homework. To use it, verify with a school from the list.</p>
+
+            <h3>Class routine</h3>
+            <label>Date <input id="routine-date" type="date"></label>
+            <button type="button" id="load-routine">GET routine</button>
+            <p class="hint">Uses your own id: the student's placement.homework_student_id, or the teacher's user id. The response is in the API log.</p>
         </div>
 
         <div id="step-hw" class="step" hidden>
@@ -557,6 +562,25 @@ $('logout').addEventListener('click', async () => {
 
 // After a logout this request should fail, because the saved auth_token has been cleared.
 $('old-token').addEventListener('click', () => call('GET', '/auth/me', null, oldToken));
+
+// Class routine (module 3). The id in the path is always the caller's own.
+$('routine-date').value = new Date().toISOString().slice(0, 10);
+
+$('load-routine').addEventListener('click', async () => {
+    const date = $('routine-date').value;
+    if (!date) return notify('Choose a date', false);
+
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return;
+
+    if (me.role === 'teacher') {
+        return call('GET', '/teachers/' + me.id + '/routine?date=' + date, null, token);
+    }
+
+    if (!me.placement) return notify('This student has no current class, so there is no routine id', false);
+
+    await call('GET', '/students/' + me.placement.homework_student_id + '/routine?date=' + date, null, token);
+});
 
 // Teacher homework panel
 

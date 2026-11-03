@@ -3,6 +3,8 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\StudentAuthController;
 use App\Http\Controllers\Auth\TeacherAuthController;
+use App\Http\Controllers\ClassRoutine\StudentRoutineController;
+use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
 use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
 use App\Http\Controllers\SchoolController;
@@ -59,3 +61,12 @@ Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:teacher']
         Route::post('homework/{homeworkId}/submissions/{studentId}/assessment', 'assess')->middleware('activity:assess_homework');
         Route::post('homework/{homeworkId}/submissions/{studentId}/resubmission', 'requestResubmission')->middleware('activity:request_resubmission');
     });
+
+// Module 3 - Class Routine
+Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:student'])
+    ->get('students/{studentId}/routine', [StudentRoutineController::class, 'show'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:teacher'])
+    ->get('teachers/{teacherId}/routine', [TeacherRoutineController::class, 'show'])
+    ->whereNumber('teacherId');

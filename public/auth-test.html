@@ -160,6 +160,27 @@
             <label>Comment <input id="result-comment" placeholder="Printed on the transcript"></label>
             <button type="button" class="alt" id="save-result-comment">PUT comment (teacher)</button>
             <p class="hint">Teacher: GET my class exams, put an exam id above, GET result sheet, then put a student_id from it and a comment. The response is in the API log.</p>
+
+            <h3>Notices</h3>
+            <button type="button" id="load-notices">GET my notices</button>
+            <label>Notice id <input id="notice-id" placeholder="e.g. 12 or web-22, from my notices"></label>
+            <button type="button" class="alt" id="read-notice">POST mark as read</button>
+            <button type="button" class="alt" id="load-notice-options">GET audience options (teacher)</button>
+            <label>Category
+                <select id="notice-category"></select>
+            </label>
+            <label>Priority
+                <select id="notice-priority"><option>normal</option><option>urgent</option><option>high</option><option>low</option></select>
+            </label>
+            <label>Title <input id="notice-title"></label>
+            <label>Body <textarea id="notice-body" rows="3"></textarea></label>
+            <label>Roles (comma list) <input id="notice-roles" value="students,guardians"></label>
+            <label>Class ids (comma list, from audience options) <input id="notice-classes"></label>
+            <label>Section ids (optional) <input id="notice-sections"></label>
+            <label>Group ids (optional) <input id="notice-groups"></label>
+            <label>Files (optional) <input id="notice-files" type="file" multiple></label>
+            <button type="button" class="alt" id="publish-notice">POST publish notice (teacher)</button>
+            <p class="hint">A teacher can only send to the classes in their audience options. No push notification is sent yet. The response is in the API log.</p>
         </div>
 
         <div id="step-hw" class="step" hidden>
@@ -667,6 +688,40 @@ $('save-result-comment').addEventListener('click', () => {
     if (!exam || !student) return notify('Enter the exam id and a student_id from the result sheet', false);
 
     return call('PUT', '/teacher/my-class/exams/' + encodeURIComponent(exam) + '/students/' + encodeURIComponent(student) + '/comment', { comment: $('result-comment').value }, token);
+});
+
+// Notices (module 5).
+['general', 'academic', 'examination', 'class_routine', 'homework', 'fee_payment', 'holiday', 'transport', 'library',
+    'result_achievement', 'parent_notice', 'teacher_notice', 'event_program', 'emergency', 'admission',
+    'routine_change', 'circular', 'other'].forEach((value) => {
+    const option = document.createElement('option');
+    option.textContent = value;
+    $('notice-category').appendChild(option);
+});
+
+$('load-notices').addEventListener('click', () => call('GET', '/notices', null, token));
+$('load-notice-options').addEventListener('click', () => call('GET', '/notices/audience-options', null, token));
+
+$('read-notice').addEventListener('click', () => {
+    const id = $('notice-id').value.trim();
+    if (!id) return notify('Enter a notice id from "my notices"', false);
+
+    return call('POST', '/notices/' + encodeURIComponent(id) + '/read', {}, token);
+});
+
+$('publish-notice').addEventListener('click', () => {
+    const form = new FormData();
+    form.append('category', $('notice-category').value);
+    form.append('priority', $('notice-priority').value);
+    form.append('title', $('notice-title').value);
+    form.append('body', $('notice-body').value);
+    form.append('audience_roles', $('notice-roles').value);
+    form.append('audience_classes', $('notice-classes').value);
+    form.append('audience_sections', $('notice-sections').value);
+    form.append('audience_groups', $('notice-groups').value);
+    [...$('notice-files').files].forEach((file) => form.append('files[]', file));
+
+    return call('POST', '/notices', form, token, { 'Idempotency-Key': 'notice-' + Date.now() });
 });
 
 // Teacher homework panel

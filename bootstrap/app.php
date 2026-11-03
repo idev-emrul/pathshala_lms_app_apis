@@ -3,6 +3,7 @@
 use App\Exceptions\ApiException;
 use App\Http\Middleware\AuthenticateAppToken;
 use App\Http\Middleware\AuthorizeHomework;
+use App\Http\Middleware\AuthorizeNotice;
 use App\Http\Middleware\AuthorizeProfile;
 use App\Http\Middleware\AuthorizeResult;
 use App\Http\Middleware\AuthorizeRoutine;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'routine' => AuthorizeRoutine::class,
             'profile' => AuthorizeProfile::class,
             'result' => AuthorizeResult::class,
+            'notice' => AuthorizeNotice::class,
             'activity' => RecordActivity::class,
         ]);
     })

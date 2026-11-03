@@ -7,6 +7,8 @@ use App\Http\Controllers\ClassRoutine\StudentRoutineController;
 use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
 use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
+use App\Http\Controllers\Notice\NoticeAudienceController;
+use App\Http\Controllers\Notice\NoticeController;
 use App\Http\Controllers\ResultReport\StudentResultController;
 use App\Http\Controllers\ResultReport\TeacherResultController;
 use App\Http\Controllers\SchoolController;
@@ -100,4 +102,14 @@ Route::middleware(['throttle:result', 'jwt.app', 'tenant', 'result:teacher'])
         Route::get('/', 'exams');
         Route::get('{examId}', 'exam');
         Route::put('{examId}/students/{studentId}/comment', 'comment')->middleware('activity:comment_result');
+    });
+
+// Module 5 - Notice System
+Route::middleware(['throttle:notice', 'jwt.app', 'tenant'])
+    ->prefix('notices')
+    ->group(function () {
+        Route::get('/', [NoticeController::class, 'index'])->middleware('notice');
+        Route::post('/', [NoticeController::class, 'store'])->middleware(['notice:teacher', 'activity:publish_notice']);
+        Route::get('audience-options', [NoticeAudienceController::class, 'index'])->middleware('notice:teacher');
+        Route::post('{noticeId}/read', [NoticeController::class, 'read'])->middleware('notice')->where('noticeId', '(web-)?[0-9]+');
     });

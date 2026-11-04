@@ -24,6 +24,14 @@ class AuthenticateAppToken
             throw new ApiException('Unauthenticated', 401);
         }
 
+        // The school always comes from the token, and this header is only compared with it.
+        // A guardian's children can be in different schools, so there is nothing to compare.
+        $schoolId = $request->header('X-School-Id');
+
+        if ($schoolId && $user->schl_id && $user->role !== AppUser::ROLE_GUARDIAN && $schoolId !== (string) $user->schl_id) {
+            throw new ApiException('You do not have access to this', 403);
+        }
+
         $request->attributes->set('app_user', $user);
         $request->attributes->set('app_claims', $claims);
 

@@ -104,6 +104,15 @@ class SchoolDbService
         return $this->connectForHomework($dbName);
     }
 
+    /**
+     * Leave writes to sl_, slv_ and el_ tables. It also writes Leave into attendance_info day cells
+     * when an application is approved, which is the only write outside a module's own tables.
+     */
+    public function connectForLeave(string $dbName): Connection
+    {
+        return $this->connectForHomework($dbName);
+    }
+
     public function classes(School $school): Collection
     {
         return $this->connectToSchool($school)->table('class_info')
@@ -155,6 +164,53 @@ class SchoolDbService
             ->where('user.banned', 0)
             ->where(fn ($query) => $query->whereNull('teacher.teacher_code')->orWhere('teacher.teacher_active_status', 1))
             ->first(['user.id', 'teacher.teacher_code', $tenant->raw('COALESCE(teacher.teacher_name, user.user_full_name) as teacher_name')]);
+    }
+
+    public function findAdminStaffAccount(Connection $tenant, string $username, string $role): ?object
+    {
+        return $tenant->table('users')
+            ->where('username', $username)
+            ->whereIn('user_type', config("pathshala.login_user_types.{$role}"))
+            ->where('activated', 1)
+            ->where('banned', 0)
+            ->first(['id', 'password', 'user_full_name']);
+    }
+
+    public function findActiveAdminStaffLogin(Connection $tenant, string $userId, string $role): ?object
+    {
+        return $tenant->table('users')
+            ->where('id', $userId)
+            ->whereIn('user_type', config("pathshala.login_user_types.{$role}"))
+            ->where('activated', 1)
+            ->where('banned', 0)
+            ->first(['id', 'user_full_name']);
+    }
+
+    public function findAdminStaffName(Connection $tenant, string $userId): ?string
+    {
+        return $tenant->table('users')->where('id', $userId)->value('user_full_name');
+    }
+
+    /**
+     * What a teacher teaches in the running sessions, or in their newest session if none is running.
+     */
+    public function teacherSubjectNames(Connection $tenant, int $teacherCode): array
+    {
+        $rows = $tenant->table('subject_teacher_info')->where('teacher_code', $teacherCode)->get(['session_code', 'subject_code']);
+        $running = $tenant->table('session_info')->where('running_session', 1)->pluck('session_code')->all();
+        $current = $rows->whereIn('session_code', $running);
+
+        if ($current->isEmpty()) {
+            $current = $rows->where('session_code', $rows->max('session_code'));
+        }
+
+        return $tenant->table('subject_info')
+            ->whereIn('subject_code', $current->pluck('subject_code')->unique()->all())
+            ->orderBy('subject_name')
+            ->pluck('subject_name')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function teacherLogins(Connection $tenant): Builder

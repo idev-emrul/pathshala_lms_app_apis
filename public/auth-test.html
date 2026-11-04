@@ -53,6 +53,8 @@
                     <option value="student">Student</option>
                     <option value="teacher">Teacher</option>
                     <option value="guardian">Guardian</option>
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
                 </select>
             </label>
             <label>Mobile number <input id="mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
@@ -86,6 +88,14 @@
             <label id="teacher-username-wrap">Username <input id="teacher-username" autocomplete="off" required></label>
             <label id="teacher-password-wrap">Password <input id="teacher-password" type="password" autocomplete="off" required></label>
             <button type="submit" id="teacher-submit">Verify</button>
+        </form>
+
+        <form id="step-admin-staff" class="step" hidden>
+            <h2>3. School and login</h2>
+            <label>School <select id="admin-staff-school" required></select></label>
+            <label>Username <input id="admin-staff-username" autocomplete="off" required></label>
+            <label>Password <input id="admin-staff-password" type="password" autocomplete="off" required></label>
+            <button type="submit">Verify</button>
         </form>
 
         <form id="step-student" class="step" hidden>
@@ -214,6 +224,85 @@
             <button type="button" class="alt" id="submit-att-register">POST register (teacher)</button>
             <p class="hint">Empty From / To = the session start to today. The register uses its date and the section_id from GET register. The response is in the API log.</p>
             <button type="button" id="open-guardian" hidden>Open guardian home</button>
+            <button type="button" id="open-leave" hidden>Open leave</button>
+        </div>
+
+        <div id="step-leave" class="step" hidden>
+            <h2>Leave and early leave</h2>
+            <p class="hint">This uses real data. Approving a leave writes Leave into the school's attendance.</p>
+            <button type="button" class="alt" id="lv-back">Back</button>
+
+            <div id="lv-applicant" hidden>
+                <label id="lv-child-wrap" hidden>Child <select id="lv-child"></select></label>
+                <h3>Leave applications</h3>
+                <button type="button" class="alt" id="lv-load">Load applications</button>
+                <form id="lv-apply">
+                    <label>Leave type <select id="lv-type" required></select></label>
+                    <div class="row2">
+                        <label>From <input id="lv-from" type="date" required></label>
+                        <label>To <input id="lv-to" type="date" required></label>
+                    </div>
+                    <label>Reason <textarea id="lv-reason" rows="2" maxlength="1000" required></textarea></label>
+                    <label>Attachment (optional) <input id="lv-file" type="file"></label>
+                    <button type="submit">Apply for leave</button>
+                </form>
+                <div id="lv-list"></div>
+
+                <h3>Early leave</h3>
+                <button type="button" class="alt" id="el-load">Load early leave</button>
+                <form id="el-create">
+                    <p class="hint" id="el-closing"></p>
+                    <label>Leave at (school time) <input id="el-at" type="datetime-local" required></label>
+                    <label>Reason <select id="el-reason" required></select></label>
+                    <label>Guardian <select id="el-guardian" required></select></label>
+                    <label>Pickup person <select id="el-pickup"></select></label>
+                    <label>Or type the pickup person <input id="el-pickup-text" placeholder="চাচা (রফিক)"></label>
+                    <label>Details (optional) <input id="el-details" maxlength="1000"></label>
+                    <label>Attachment (optional) <input id="el-file" type="file"></label>
+                    <button type="submit">Request early leave</button>
+                </form>
+                <div id="el-list"></div>
+            </div>
+
+            <div id="lv-review" hidden>
+                <h3>Leave review</h3>
+                <label>Status
+                    <select id="lv-review-status">
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </label>
+                <button type="button" class="alt" id="lv-review-load">Load review queue</button>
+                <p class="hint" id="lv-review-counts"></p>
+                <div id="lv-review-list"></div>
+            </div>
+
+            <div id="el-approve" hidden>
+                <h3>Early leave approvals</h3>
+                <button type="button" class="alt" id="el-queue-load">Load my queue</button>
+                <div id="el-queue-list"></div>
+            </div>
+
+            <div id="el-gate" hidden>
+                <h3>Gate</h3>
+                <label>Date <input id="el-gate-date" type="date"></label>
+                <button type="button" class="alt" id="el-gate-load">Load gate list</button>
+                <div id="el-gate-list"></div>
+            </div>
+
+            <div id="lv-admin" hidden>
+                <h3>Reports</h3>
+                <div class="row2">
+                    <label>Year <input id="lv-report-year" inputmode="numeric" maxlength="4"></label>
+                    <label>Month <input id="lv-report-month" inputmode="numeric" maxlength="2"></label>
+                </div>
+                <button type="button" class="alt" id="lv-report-leave">Leave summary</button>
+                <button type="button" class="alt" id="lv-report-early">Early leave summary</button>
+                <label>Register date <input id="el-register-date" type="date"></label>
+                <button type="button" class="alt" id="el-register-load">Daily register</button>
+                <pre id="lv-report"></pre>
+            </div>
         </div>
 
         <div id="step-guardian" class="step" hidden>
@@ -224,6 +313,7 @@
             <p></p>
             <button type="button" id="guardian-homework">Homework</button>
             <button type="button" class="alt" id="guardian-summary">Homework summary</button>
+            <button type="button" id="guardian-leave">Leave</button>
             <button type="button" id="guardian-add">Add child</button>
             <button type="button" class="alt" id="guardian-remove">Remove this child</button>
             <button type="button" class="alt" id="guardian-home">Back to profile</button>
@@ -340,10 +430,17 @@ let oldToken = null;
 let schoolsLoaded = false;
 let lastErrorData = null;
 let resettingPin = false;
+let session = null;
+
+function canUseLeave(data) {
+    if (data.role === 'guardian') return true;
+    if (data.role === 'student') return Boolean(data.student_id);
+    return ['teacher', 'schoolAdmin'].includes(data.role) && data.user.is_verified;
+}
 
 function show(stepId) {
     document.querySelectorAll('.step').forEach((el) => { el.hidden = el.id !== stepId; });
-    document.querySelector('.layout').classList.toggle('wide', stepId === 'step-hw');
+    document.querySelector('.layout').classList.toggle('wide', stepId === 'step-hw' || stepId === 'step-leave');
 }
 
 function notify(text, ok) {
@@ -454,6 +551,8 @@ async function openSchoolStep() {
 
 function loggedIn(data) {
     token = data.token;
+    session = data;
+    $('open-leave').hidden = !canUseLeave(data);
     $('user-data').textContent = JSON.stringify(data.user, null, 2);
     $('old-token').hidden = true;
     $('open-homework').hidden = !(data.user.role === 'teacher' && data.user.is_verified);
@@ -506,7 +605,7 @@ $('step-otp').addEventListener('submit', async (e) => {
     const data = await call('POST', '/auth/verify-otp', { mobile_number: $('mobile').value.trim(), otp: $('otp').value.trim(), role: $('role').value });
     if (data) {
         flowToken = data.flow_token;
-        const openStep = { teacher: openTeacherStep, guardian: () => openGuardianChildStep(false) }[$('role').value] || openSchoolStep;
+        const openStep = { teacher: openTeacherStep, guardian: () => openGuardianChildStep(false), admin: openAdminStaffStep, staff: openAdminStaffStep }[$('role').value] || openSchoolStep;
         await openStep();
     }
 });
@@ -658,6 +757,28 @@ $('step-teacher').addEventListener('submit', async (e) => {
             username: $('teacher-username').value.trim(),
             password: $('teacher-password').value,
         });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+// Admin and staff have no "Others" school and no guest login.
+
+async function openAdminStaffStep() {
+    show('step-admin-staff');
+    const schools = await call('GET', '/schools');
+    if (schools) fillSelect($('admin-staff-school'), schools, 'schl_id', (s) => s.schl_name);
+}
+
+$('step-admin-staff').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/' + $('role').value + '/verify', {
+        flow_token: flowToken,
+        schl_id: Number($('admin-staff-school').value),
+        username: $('admin-staff-username').value.trim(),
+        password: $('admin-staff-password').value,
+    });
     if (data) {
         flowToken = data.flow_token;
         show('step-pin');
@@ -1297,7 +1418,296 @@ $('hw-filter-apply').addEventListener('click', openList);
 $('hw-class').addEventListener('change', fillClassOptions);
 $('hw-work-back').addEventListener('click', () => openSubmissions(currentHomework));
 
+// Leave and early leave. What shows depends on the role, and the API checks it again.
+
+let leaveChildren = [];
+
+function isApplicant() {
+    return session.role === 'student' || session.role === 'guardian';
+}
+
+function leaveStudentId() {
+    if (session.role === 'student') return session.student_id;
+    const child = leaveChildren.find((c) => String(c.id) === $('lv-child').value);
+    return child ? child.homework_student_id : null;
+}
+
+// Two children in different schools can share a student id, so a guardian always says which one.
+function leaveQuery() {
+    return session.role === 'guardian' ? '?child_id=' + encodeURIComponent($('lv-child').value) : '';
+}
+
+function studentPath(suffix) {
+    return '/students/' + encodeURIComponent(leaveStudentId()) + suffix + leaveQuery();
+}
+
+function fromDhakaToUtc(localValue) {
+    return new Date(localValue + ':00+06:00').toISOString().replace('.000Z', 'Z');
+}
+
+function dhakaTime(utc) {
+    return utc ? new Date(utc).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka', dateStyle: 'medium', timeStyle: 'short' }) : '-';
+}
+
+function withFile(fields, input) {
+    if (!input.files.length) return fields;
+    const form = new FormData();
+    Object.entries(fields).forEach(([key, value]) => { if (value) form.append(key, value); });
+    form.append('attachment', input.files[0]);
+    return form;
+}
+
+function leaveItem(title, lines, ...actions) {
+    return make('div', { className: 'item' },
+        make('strong', { textContent: title }),
+        ...lines.filter(Boolean).map((line) => make('p', { textContent: line })),
+        ...actions);
+}
+
+function stepsText(request) {
+    return 'Steps: ' + request.steps.map((s) => s.stage + ' ' + s.status + (s.by ? ' (' + s.by + ')' : '')).join(' > ');
+}
+
+function attachmentLink(row) {
+    return row.attachment_url ? make('a', { href: row.attachment_url, target: '_blank', rel: 'noopener', textContent: row.attachment_name || 'Attachment' }) : null;
+}
+
+async function openLeave() {
+    clearNotice();
+    show('step-leave');
+    $('lv-applicant').hidden = !isApplicant();
+    $('lv-review').hidden = !['teacher', 'schoolAdmin'].includes(session.role);
+    $('el-approve').hidden = session.role === 'student';
+    $('el-gate').hidden = !['teacher', 'schoolAdmin'].includes(session.role);
+    $('lv-admin').hidden = session.role !== 'schoolAdmin';
+
+    if (session.role === 'guardian') {
+        const children = await call('GET', '/guardian/children', null, token);
+        leaveChildren = (children || []).filter((c) => c.is_available);
+        fillSelect($('lv-child'), leaveChildren, 'id', (c) => c.student_name + ' | ' + (c.school_name || ''));
+        $('lv-child-wrap').hidden = false;
+        if (!leaveChildren.length) {
+            notify('No child can be used right now.', false);
+            $('lv-applicant').hidden = true;
+            return;
+        }
+    }
+
+    if (isApplicant()) {
+        await loadApplications();
+        await loadEarlyLeave();
+    }
+}
+
+async function loadApplications() {
+    const data = await call('GET', studentPath('/leave'), null, token);
+    if (!data) return;
+
+    fillSelect($('lv-type'), data.types, 'id', (t) => t.name);
+    const s = data.summary;
+    $('lv-list').replaceChildren(
+        make('p', { className: 'hint', textContent: 'Total ' + s.total + ' | Pending ' + s.pending + ' | Approved ' + s.approved + ' | Rejected ' + s.rejected + ' | Leave days ' + s.leave_days }),
+        ...data.applications.map(applicationRow),
+    );
+}
+
+function applicationRow(a) {
+    const withdraw = a.status === 'pending'
+        ? make('button', { type: 'button', className: 'alt', textContent: 'Withdraw', onclick: () => withdrawLeave(a) })
+        : null;
+
+    return leaveItem(a.application_no + ' | ' + a.status, [
+        a.type.name + ' | ' + a.from + ' to ' + a.to + ' | ' + a.days + ' day(s)',
+        a.reason,
+        a.remarks ? 'Remarks: ' + a.remarks : null,
+        a.history.length ? 'History: ' + a.history.map((h) => h.kind + ' by ' + h.by).join(', ') : null,
+    ], attachmentLink(a), make('div', {}, withdraw));
+}
+
+async function withdrawLeave(application) {
+    if (!confirm('Withdraw ' + application.application_no + '?')) return;
+    if (await call('POST', studentPath('/leave/' + application.id + '/withdraw'), {}, token)) await loadApplications();
+}
+
+$('lv-apply').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = withFile({
+        type_id: $('lv-type').value,
+        from: $('lv-from').value,
+        to: $('lv-to').value,
+        reason: $('lv-reason').value.trim(),
+    }, $('lv-file'));
+
+    if (await call('POST', studentPath('/leave'), body, token)) {
+        $('lv-reason').value = '';
+        $('lv-file').value = '';
+        await loadApplications();
+    }
+});
+
+async function loadEarlyLeave() {
+    const data = await call('GET', studentPath('/early-leave'), null, token);
+    if (!data) return;
+
+    $('el-closing').textContent = 'Class ' + data.class_label + ' closes at ' + data.closing_time + ' today.';
+    fillSelect($('el-reason'), data.reasons, 'id', (r) => r.name);
+    fillSelect($('el-guardian'), data.guardians, 'id', (g) => g.name + ' (' + g.relation + ')');
+    fillSelect($('el-pickup'), data.pickups, 'id', (p) => p.name + ' (' + p.relation + ')');
+
+    $('el-list').replaceChildren(
+        make('p', { className: 'hint', textContent: 'This month: total ' + data.overview.total + ' | Waiting for parent ' + data.overview.pending_parent + ' | Waiting for teacher ' + data.overview.pending_teacher + ' | Approved ' + data.overview.approved }),
+        ...data.history.map((r) => leaveItem(r.number + ' | ' + r.status, requestLines(r), attachmentLink(r))),
+    );
+}
+
+function requestLines(r) {
+    return [
+        (r.student_name ? r.student_name + ' | ' + r.class_label + ' | Roll ' + r.roll + ' | ' : '') + dhakaTime(r.leave_at) + ' | ' + r.reason,
+        'Guardian: ' + r.guardian_name + ' | Pickup: ' + r.pickup,
+        stepsText(r),
+        r.release_code ? 'Release code: ' + r.release_code : null,
+        r.released_at ? 'Released ' + dhakaTime(r.released_at) + ' to ' + r.handed_to : null,
+    ];
+}
+
+$('el-create').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = withFile({
+        leave_at: fromDhakaToUtc($('el-at').value),
+        reason: $('el-reason').value,
+        guardian_id: $('el-guardian').value,
+        pickup: $('el-pickup-text').value.trim() || $('el-pickup').value,
+        details: $('el-details').value.trim(),
+    }, $('el-file'));
+
+    if (await call('POST', studentPath('/early-leave'), body, token)) {
+        $('el-pickup-text').value = '';
+        $('el-details').value = '';
+        $('el-file').value = '';
+        await loadEarlyLeave();
+    }
+});
+
+async function loadReview() {
+    const data = await call('GET', '/leave/review?status=' + $('lv-review-status').value, null, token);
+    if (!data) return;
+
+    $('lv-review-counts').textContent = 'Pending ' + data.counts.pending + ' | Approved ' + data.counts.approved + ' | Rejected ' + data.counts.rejected;
+    $('lv-review-list').replaceChildren(...data.applications.map(reviewRow));
+}
+
+function reviewRow(a) {
+    const remarks = make('input', { placeholder: 'Remarks (required to reject)' });
+    const decide = async (decision) => {
+        if (decision === 'approve' && !confirm('Approve this leave? It writes Leave into the attendance.')) return;
+        const body = { decision, remarks: remarks.value.trim() || null };
+        if (await call('POST', '/leave/review/' + a.id + '/decision', body, token)) await loadReview();
+    };
+    const actions = a.status === 'pending'
+        ? make('div', {}, remarks,
+            make('button', { type: 'button', textContent: 'Approve', onclick: () => decide('approve') }),
+            make('button', { type: 'button', className: 'alt', textContent: 'Reject', onclick: () => decide('reject') }))
+        : null;
+
+    return leaveItem(a.application_no + ' | ' + a.status, [
+        a.student_name + ' | ' + a.class_label + ' | Roll ' + a.roll,
+        a.type.name + ' | ' + a.from + ' to ' + a.to + ' | ' + a.days + ' day(s)',
+        a.reason,
+        a.remarks ? 'Remarks: ' + a.remarks : null,
+        a.decided_by ? 'Decided by ' + a.decided_by : null,
+    ], attachmentLink(a), actions);
+}
+
+async function loadEarlyQueue() {
+    const data = await call('GET', '/early-leave/queue', null, token);
+    if (!data) return;
+
+    $('el-queue-list').replaceChildren(...data.requests.map(queueRow));
+    if (!data.requests.length) $('el-queue-list').append(make('p', { className: 'hint', textContent: 'Nothing is waiting for you.' }));
+}
+
+function queueRow(r) {
+    const remarks = make('input', { placeholder: 'Remarks (optional)' });
+    const decide = async (decision) => {
+        const body = { decision, remarks: remarks.value.trim() || null };
+        if (r.child_id) body.child_id = Number(r.child_id);
+        if (await call('POST', '/early-leave/' + r.id + '/decision', body, token)) {
+            await loadEarlyQueue();
+            if (isApplicant()) await loadEarlyLeave();
+        }
+    };
+
+    return leaveItem(r.number + ' | ' + r.status, requestLines(r), attachmentLink(r), make('div', {}, remarks,
+        make('button', { type: 'button', textContent: 'Approve', onclick: () => decide('approve') }),
+        make('button', { type: 'button', className: 'alt', textContent: 'Reject', onclick: () => decide('reject') })));
+}
+
+async function loadGate() {
+    const date = $('el-gate-date').value;
+    const data = await call('GET', '/gate/early-leave' + (date ? '?date=' + date : ''), null, token);
+    if (!data) return;
+
+    $('el-gate-list').replaceChildren(...data.requests.map(gateRow));
+    if (!data.requests.length) $('el-gate-list').append(make('p', { className: 'hint', textContent: 'No approved requests on ' + data.date + '.' }));
+}
+
+function gateRow(r) {
+    if (r.status !== 'approved') return leaveItem(r.number + ' | ' + r.status, requestLines(r));
+
+    const code = make('input', { placeholder: 'Release code from the guardian', inputMode: 'numeric', maxLength: 6 });
+    const handedTo = make('input', { placeholder: 'Handed to (leave empty for the pickup person)' });
+    const relation = make('input', { placeholder: 'Relation, if a different person' });
+    const reason = make('input', { placeholder: 'Reason, if a different person' });
+    const release = async () => {
+        const body = { code: code.value.trim(), handed_to: handedTo.value.trim() || null, handed_to_relation: relation.value.trim() || null, override_reason: reason.value.trim() || null };
+        if (await call('POST', '/early-leave/' + r.id + '/release', body, token)) await loadGate();
+    };
+
+    return leaveItem(r.number + ' | ' + r.status, requestLines(r), make('div', {}, code, handedTo, relation, reason,
+        make('button', { type: 'button', textContent: 'Release student', onclick: release })));
+}
+
+async function showReport(path) {
+    const data = await call('GET', path, null, token);
+    if (data) $('lv-report').textContent = JSON.stringify(data, null, 2);
+}
+
+function reportQuery() {
+    const params = new URLSearchParams();
+    if ($('lv-report-year').value.trim()) params.set('year', $('lv-report-year').value.trim());
+    if ($('lv-report-month').value.trim()) params.set('month', $('lv-report-month').value.trim());
+    const query = params.toString();
+    return query ? '?' + query : '';
+}
+
+function leaveBack() {
+    clearNotice();
+    if (session.role === 'guardian') {
+        openGuardianHome();
+    } else {
+        show('step-home');
+    }
+}
+
+$('open-leave').addEventListener('click', openLeave);
+$('guardian-leave').addEventListener('click', openLeave);
+$('lv-back').addEventListener('click', leaveBack);
+$('lv-load').addEventListener('click', loadApplications);
+$('el-load').addEventListener('click', loadEarlyLeave);
+$('lv-child').addEventListener('change', async () => { await loadApplications(); await loadEarlyLeave(); });
+$('lv-review-load').addEventListener('click', loadReview);
+$('el-queue-load').addEventListener('click', loadEarlyQueue);
+$('el-gate-load').addEventListener('click', loadGate);
+$('lv-report-leave').addEventListener('click', () => showReport('/admin/leave/summary' + reportQuery()));
+$('lv-report-early').addEventListener('click', () => showReport('/admin/early-leave/summary' + reportQuery()));
+$('el-register-load').addEventListener('click', () => {
+    const date = $('el-register-date').value;
+    showReport('/early-leave/register' + (date ? '?date=' + date : ''));
+});
+
 $('restart').addEventListener('click', () => {
+    session = null;
+    leaveChildren = [];
     flowToken = null;
     token = null;
     oldToken = null;

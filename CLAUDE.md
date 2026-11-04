@@ -1,9 +1,6 @@
 # Pathshala App API
 
-Laravel 12 API-only backend for the Pathshala mobile app. It has login for students and teachers, homework, and five modules of the app team's contract: class routine, student profile, results, notices and attendance. It has its own code but uses the same databases as the live Pathshala project.
-
-Last updated: 3 November 2026.
-Laravel 12 API-only backend for the Pathshala mobile app. It has login for students, teachers and guardians, and the homework and quiz modules. It has its own code but uses the same databases as the live Pathshala project.
+Laravel 12 API-only backend for the Pathshala mobile app. It has login for students, teachers, guardians, admins and staff, the homework, quiz and leave modules, and five more modules of the app team's contract: class routine, student profile, results, notices and attendance. It has its own code but uses the same databases as the live Pathshala project.
 
 Last updated: 4 November 2026.
 
@@ -14,6 +11,7 @@ Last updated: 4 November 2026.
 | Student login | Built |
 | Teacher login | Built, verified with one real account up to the PIN step |
 | Guardian login and children | Built, covered by tests on made-up schools only |
+| Admin and staff login | Built. Admins can use leave review, and staff have no features yet. The password step is tested with stand-in accounts |
 | Homework API (student and teacher) | Built, 14 routes |
 | Class routine (contract module 3) | Built, 2 routes |
 | Student profile (module 1) | Built, 3 routes |
@@ -24,9 +22,11 @@ Last updated: 4 November 2026.
 | Tests | 121 passing at the last run, without `HomeworkApiTest` (see Tests) |
 | Other 3 roles (guardian, admin, staff login), OTP SMS gateway, push, cloud uploads | Not built |
 | Quiz API (13.1 to 13.10, and read-only for guardians) | Built, tested on made-up data only. Web models not available, see Quiz API |
+| Leave API (Modules 11 and 12, 16 routes) | Built to match the web system's code, tested on made-up data only |
 | Activity log | Built, monthly files, changes only |
-| Tests | 158 passing, 1 skipped at the last run |
-| Other 2 roles, SMS gateway, cloud uploads | Not built |
+| App contract, auth part | Partly done, see App contract decisions |
+| Tests | 218 passing at the last run |
+| SMS gateway, cloud uploads | Not built |
 
 ## Commands
 
@@ -49,7 +49,7 @@ php artisan otp:prune
 
   | Connection | Module | May write |
   | --- | --- | --- |
-  | `tenant_homework` | Homework | `hw_` tables |
+  | `tenant_homework` | Homework, quiz, leave | `hw_`, `qz_`, `qb_`, `sl_`, `slv_` and `el_` tables. `LeaveService` also writes Leave into the day columns and `attendance_modifier` of `attendance_info` when a leave is approved |
   | `tenant_profile` | Profile | `app_stu_profile_change_request` |
   | `tenant_result` | Results | `exam_overall_result.remarks_note` and `overall_dom` only (the teacher's comment) |
   | `tenant_notice` | Notices | `app_notice`, `app_notice_read` |
@@ -57,7 +57,6 @@ php artisan otp:prune
 
   `exam_overall_result`, `attendance_info` and `message_receiver_info` are web tables. Write them only the way the web system does (see each module below).
 - New school tables of this project start with `app_`. They are not migrations: their `CREATE TABLE IF NOT EXISTS` SQL is run by hand on every school database (see Before going live).
-- The school connection `tenant` is read-only. Only homework and quiz services write to a school, through `tenant_homework`, and only to `hw_`, `qz_` and `qb_` tables. This is a code rule, not a database permission.
 - Never write test data to a real school. `TestCase` refuses any master database except `pathshala_app_test`.
 - Never put secrets in a response or in a readable token field: `student_auth`, `users.password`, PIN, OTP, `db_name`, `api_code`, `school_secret`, `TOKEN_SALT`, `JWT_SECRET`.
 - `--pretend` on `php artisan migrate` still creates the migration table if it is missing.
@@ -83,7 +82,7 @@ One per school. The name comes from `school_information.db_name`. Test school: `
 | --- | --- |
 | `student_info` | Student ID, `student_auth` (plain text password), `contact_number` |
 | `student_current_status_info` | Class placement. `current_status_info_id` is the homework student id |
-| `users` | Teacher login: `username`, `password` (`$2a$` bcrypt), `user_type`, `activated`, `banned` |
+| `users` | Teacher, admin and staff login: `username`, `password` (`$2a$` bcrypt), `user_type`, `activated`, `banned` |
 | `teacher_info` | Teacher profile. Some logins have `teacher_code` 0 and no row here |
 | `subject_teacher_info` | What a teacher teaches. `section_code` 0 means every section |
 | `class_teacher_info` | Who is class teacher of a class / section / group / shift (0 = all) per session |
@@ -101,6 +100,9 @@ One per school. The name comes from `school_information.db_name`. Test school: `
 | `app_notice`, `app_notice_read` | This project. Notices published from the app, and read marks |
 | `app_attendance_register_log` | This project. Every register submitted from the app (who, when, what) |
 | `qz_*`, `qb_questions`, `qb_question_options`, `perf_grading_bands` | Quiz. See `doc_resource/quiz_module_plan.md` |
+| `sl_*`, `slv_*`, `el_*` | Leave and early leave. See `doc_resource/student_leave_module_plan.md` |
+| `class_teacher_info` | Which teacher is class teacher of a section. Decides who reviews leave |
+| `attendance_info` | One row per `current_status_info_id` and month. `d1` to `d31`: 0 not marked, 1 present, 2 absent, 3 leave, 4 holiday, 5 fugitive |
 
 Data traps:
 
@@ -116,7 +118,7 @@ Data traps:
 ```text
 app/Http/Controllers/
   SchoolController.php
-  Auth/            AuthController, StudentAuthController, TeacherAuthController, GuardianAuthController
+  Auth/            AuthController, StudentAuthController, TeacherAuthController, GuardianAuthController, AdminStaffAuthController
   Guardian/        GuardianChildController, GuardianHomeworkController
   HwAssignment/    StudentHomeworkController, TeacherHomeworkController
   ClassRoutine/    StudentRoutineController, TeacherRoutineController
@@ -125,6 +127,7 @@ app/Http/Controllers/
   Notice/          NoticeController, NoticeAudienceController
   Attendance/      StudentAttendanceController, TeacherAttendanceController
   Quiz/            StudentQuizController, TeacherQuizController
+  Leave/           LeaveController, EarlyLeaveController
 app/Http/Middleware/
   AuthenticateAppToken    jwt.app: checks the token
   ConnectTenant           tenant: opens the school database
@@ -135,9 +138,10 @@ app/Http/Middleware/
   AuthorizeNotice         notice (both roles) or notice:teacher
   AuthorizeAttendance     attendance:student or attendance:teacher
   AuthorizeGuardian       guardian: guardian accounts only
+  AuthorizeLeave          leave:student, leave:staff, leave:admin or leave:approver
   RecordActivity          activity:action_name
 app/Services/
-  OtpService, SchoolDbService, StudentAuthService, TeacherAuthService, TokenService, ActivityLogService,
+  OtpService, SchoolDbService, StudentAuthService, TeacherAuthService, AdminStaffAuthService, TokenService, ActivityLogService,
   GuardianAuthService, GuardianChildService
   HwAssignment/    HomeworkReader, SubmissionService, AssessmentService, AssignmentService,
                    IdempotencyService, HomeworkFiles, HomeworkTime, HomeworkCaller
@@ -154,11 +158,12 @@ public/auth-test.html   Test UI. Delete before going live
 tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, HomeworkApiTest,
                    RoutineApiTest, ProfileApiTest, ResultApiTest, NoticeApiTest, AttendanceApiTest
   Quiz/            QuizReader, QuizAttemptService, QuizTeacherService, QuizLifecycle
-doc_resource/      Plans from the web system. hw_api_v1.md and qz_api_v1.md are the contracts
-postman/           Pathshala_App_API (student login), Pathshala_Homework_API (login and homework),
-                   Pathshala_Guardian_API (guardian login and children), Pathshala_Quiz_API
+  Leave/           LeaveService, EarlyLeaveService, LeaveSupport
+doc_resource/      Plans from the web system. hw_api_v1.md, qz_api_v1.md and leave_api_v1.md are the contracts
+postman/           Pathshala_Auth_API (login for all five roles), Pathshala_App_API (old, student login), Pathshala_Homework_API (login and homework),
+                   Pathshala_Guardian_API (guardian login and children), Pathshala_Quiz_API, Pathshala_Leave_API
 public/auth-test.html   Test UI. Delete before going live
-tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, GuardianLoginFlowTest, HomeworkApiTest, QuizApiTest
+tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, GuardianLoginFlowTest, AdminStaffLoginFlowTest, HomeworkApiTest, QuizApiTest, LeaveApiTest
 ```
 
 Every module follows the homework structure: its own controller and service folder, an `Authorize*` middleware that builds a `*Caller` from the token and the school database (never from the URL or body), a write connection only if it writes, a feature test and a Postman collection. A new module should do the same.
@@ -167,7 +172,7 @@ Every module follows the homework structure: its own controller and service fold
 
 ## Conventions
 
-- Every response is `{ "status": true, "message": "...", "data": {} }`. Errors have `status: false`, and `errors` for bad fields. Use `ApiResponse`.
+- Every response is `{ "status": true, "message": "...", "data": {} }`. Errors have `status: false`, `errors` for bad fields, and `error: { code, message, details }`, which is what the app reads. Extra values like `next` are in `error` and `data`. Use `ApiResponse`.
 - Throw `ApiException` for expected failures. Do not expose SQL or database names.
 - `doc_resource/hw_api_v1.md` uses a different envelope, `{ "data": ... }` and `{ "error": ... }`. This project keeps its own envelope, and the fields inside `data` follow that doc.
 - The other modules follow the app team's contract `PATHSHALA_API_v1.pdf` (kept outside this repo) in the same way: its paths, fields, status codes and server rules, inside this project's envelope. Where the school has no data for a field, it is `null`.
@@ -202,13 +207,20 @@ A teacher login must have `user_type = Teacher`, `activated = 1` and `banned = 0
 
 Forgot PIN: `send-otp` with `"reset_pin": true`, then the same steps. The child must already be on the account, unless the account has no children left.
 
+**Admin and staff**
+
+1. School from the list: `POST /auth/admin/verify` or `POST /auth/staff/verify` with `schl_id`, `username`, `password`. Anything wrong gives 422 "The information you entered is not valid".
+2. `POST /auth/set-pin` returns the JWT.
+
+There is no guest login and no "Others" school for these roles. The login must have `activated = 1`, `banned = 0` and a `user_type` listed for the role in `pathshala.login_user_types`: admin is `Admin` and staff is `Accountant`. `Super Admin` logins cannot use the app. The name comes from `users.user_full_name` and is returned as `name`. `verified_id` is `users.id`.
+
 **After login:** `POST /auth/pin-login`, `GET /auth/me`, `POST /auth/logout`.
 
 ### One account per number and role
 
 - `app_user` has a unique rule on `mobile_number` + `role`. One number can have one teacher, one student and one guardian.
 - The row is created at OTP verify, with an empty `pin`. It is filled at Set PIN.
-- `send-otp` on a number with a PIN returns 409 and `data.next = "pin_login"`. No OTP is sent.
+- `send-otp` on a number with a PIN returns 422 and `error.next = "pin_login"`. No OTP is sent.
 - Forgot PIN: `send-otp` with `"reset_pin": true`, then the same steps.
 - A verified number can only be re-verified by the same person. Another person or a guest gets 409 and the account stays as it is. A guest number can later become verified. This does not apply to guardians, who have many children.
 - `verified_id` is the student's registration code, or the teacher's `users.id`. These can overlap, so always check the role. It is empty for a guardian.
@@ -271,7 +283,7 @@ Base: `/api/v1`. Bearer token required. Verified users only, so guests get 403. 
 
 - The student `{id}` is `current_status_info_id`. The app gets it from `/auth/me` as `placement.homework_student_id`.
 - A student can only use their own id. Another teacher's homework returns 404.
-- A teacher sees homework they created, or where `teacher_id` is their `teacher_code`. There are no admin features, because admins cannot log in to the app.
+- A teacher sees homework they created, or where `teacher_id` is their `teacher_code`. Admins and staff can log in to the app, but homework and quiz routes refuse them with 403.
 - A teacher can only create for classes, sections and subjects in `subject_teacher_info`. Without a `teacher_code`, the options are empty.
 - Create uses the newest running session that has active students in the class.
 - `Idempotency-Key` on create returns the first answer. It uses `hw_api_idempotency`.
@@ -381,12 +393,48 @@ Base: `/api/v1`. Bearer token required. Verified users only, so guests get 403. 
 - The register id `section_id` is `session-class-section-group-shift`. Marks are `present`, `absent` or `fugitive`; a day already on leave stays leave; a future date is 422. Each mark goes into the day column of `attendance_info`; a month that was not set up gets its row. Every submission is logged in `app_attendance_register_log`, which also gives `marked_by` and `marked_at`. Same `Idempotency-Key`: written once.
 - Guardian SMS (`AttendanceSms`, gateway in `Services/Sms/SmsGateway`, a port of the web `Sms_lib`): sent after the response (`defer`), only when `SMS_ENABLED=true`, only for today's date, and only for a student whose status changed. Each status needs the school's active `message_info` template (type 6 present, 7 absent, 8 fugitive), with the web's `@` tags. Gateway, on/off and balance come from `pathshala.cloud` and `isms.itlab.solutions` as on the web; there is no default key, and SSL is checked. Each SMS is logged in `message_receiver_info`, so the web balance counts it. A failure never affects the register.
 
+## Leave API
+
+Contract: `doc_resource/leave_api_v1.md`. The web system reads the same rows, so its code decides the details: `application/models/student_leave/` and the "MODULES 11 + 12" part of `application/controllers/api/v1.php` in `D:\xamp\htdocs\pathshala-multi-v3\multi-general-api-v3`. That folder is read-only for this project. Check it before changing log actions, stored values or response fields. Bearer token required. The doc's no-token mode (`X-Database`, `X-User-Type`) is not used.
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET, POST | `/students/{id}/leave` | Student, or guardian of a linked child |
+| GET | `/students/{id}/leave/{applicationId}` | Same |
+| POST | `/students/{id}/leave/{applicationId}/withdraw` | Same |
+| GET | `/leave/review` | Class teacher (own sections) or admin |
+| POST | `/leave/review/{applicationId}/decision` | Same |
+| GET | `/admin/leave/summary` | Admin |
+| GET, POST | `/students/{id}/early-leave` | Student, or guardian of a linked child |
+| GET | `/students/{id}/early-leave/{requestId}` | Same |
+| GET | `/early-leave/queue` | Guardian, class teacher or admin |
+| POST | `/early-leave/{requestId}/decision` | Same. A guardian must send `child_id` |
+| GET | `/gate/early-leave` | Any teacher or admin |
+| POST | `/early-leave/{requestId}/release` | Same |
+| GET | `/early-leave/register`, `/admin/early-leave/summary` | Admin |
+
+- `{id}` is `current_status_info_id`. Paths take `3` or `lv-3` and `el-3`. Logins are checked on every request, so a banned teacher or admin gets 403 at once.
+- Approving a leave writes 3 into `attendance_info`, only over 0 or 2, unless `slv_sync_attendance` is off. A weekly off day is always skipped. `slv_attendance_sync` keeps each cell's old value. A month with no sheet yet is `waiting_month`, and is written when the review queue is next opened.
+- A teacher's sections come from `class_teacher_info`. A row with `session_code` or `shift_code` empty or 0 counts for all, and the session does not have to be running. With `slv_reviewer_mode` set to `office`, a teacher can see the queue but not decide.
+- The early leave step comes from the caller and the status, never from the app. A guardian's own request skips the parent step. Pending requests expire on the next early leave call, as there is no cron.
+- `release_code` is only sent to the guardian, and only while approved. The gate list leaves it out.
+- `sl_notifications` rows are queued only. Nothing sends them yet.
+- A school without `sl_settings` answers 503 `not_set_up`.
+- Attachments are stored at `<EIIN>/student_leave/leave|early_leave/<file>`, the web system's path, but on this project's disk until it has bucket credentials.
+
+Where this differs from the web system, on purpose:
+
+- A guardian is a linked child in `app_guardian_child`, not a mobile number. They send `child_id` on 12.5, and each 12.4 row has one, because their children can be in different schools.
+- A guardian asking for a child who is not theirs gets 403 `not_linked`, from the contract's error list.
+- An inactive student can still read, because the contract says read-only. The web refuses reads too.
+- Super Admin logins cannot use this, because they cannot log in to the app.
+- Writes run in a transaction, and the error envelope is this project's.
+
 ## Activity log
 
 File: `storage/logs/activity/activity_YYYY_MM.log`, one JSON line per event, one file per month.
 
-Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `request_profile_change`, `comment_result`, `publish_notice`, `submit_attendance`. Notice read marks are not logged. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
-Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `add_child`, `remove_child`, `create_quiz`, `accept_quiz`, `start_quiz_attempt`, `submit_quiz`, `save_quiz_marks`, `release_quiz`. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
+Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `add_child`, `remove_child`, `create_quiz`, `accept_quiz`, `start_quiz_attempt`, `submit_quiz`, `save_quiz_marks`, `release_quiz`, `apply_leave`, `withdraw_leave`, `decide_leave`, `create_early_leave`, `decide_early_leave`, `release_early_leave`, `request_profile_change`, `comment_result`, `publish_notice`, `submit_attendance`. Notice read marks are not logged. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
 
 ```json
 {"time":"2026-11-02 14:10:00","app_user_id":1,"role":"teacher","action":"create_homework","message":"Hasan created homework: Algebra","details":{"homeworkId":"3"},"ip_address":"127.0.0.1"}
@@ -416,8 +464,7 @@ Rate limits: auth routes 30 a minute, homework, quiz and guardian read routes 12
 
 ## Test UI
 
-`public/auth-test.html` at `http://127.0.0.1:8000/auth-test.html` covers student login, teacher login and the teacher homework panel, with an API log. After login it also has a box per module: class routine, student profile and correction request, results and the teacher comment, notices (feed, read, audience options, publish with files), and attendance (report, month, summary, register). Each uses the caller's own id from `/auth/me`. There is no student homework panel yet, so use Postman for hand-ins. Reloading the page loses the token. It calls the real API, so anything created there is real data.
-`public/auth-test.html` at `http://127.0.0.1:8000/auth-test.html` covers student login, teacher login, guardian login with the guardian home, and the teacher homework panel, with an API log. There is no student homework panel or quiz panel yet, so use Postman for hand-ins and quizzes. Reloading the page loses the token. It calls the real API, so anything created there is real data.
+`public/auth-test.html` at `http://127.0.0.1:8000/auth-test.html` covers student login, teacher login, guardian login with the guardian home, admin and staff login, the teacher homework panel and a leave panel for each role, with an API log. After login it also has a box per module: class routine, student profile and correction request, results and the teacher comment, notices (feed, read, audience options, publish with files), and attendance (report, month, summary, register). Each uses the caller's own id from `/auth/me`. There is no student homework panel or quiz panel yet, so use Postman for hand-ins and quizzes. Reloading the page loses the token. It calls the real API, so anything created there is real data.
 
 ## Before going live
 
@@ -434,7 +481,7 @@ Rate limits: auth routes 30 a minute, homework, quiz and guardian read routes 12
 ## Open items
 
 - `GET /auth/me` still works for a banned teacher, because that check runs only on homework routes.
-- `auth_token` is stored in plain text. Hashing it is recommended, since tokens never expire.
+- A banned or changed admin or staff login can still use PIN login and `GET /auth/me`. Add an active check before adding any admin or staff routes.- `auth_token` is stored in plain text. Hashing it is recommended, since tokens never expire.
 - `schl` in the token is unused and can be removed.
 - Teacher login does not check the number against `teacher_info.contact_number`.
 - A guardian cannot reset their PIN if every linked child has left the school. There is no other recovery path.
@@ -453,6 +500,31 @@ Rate limits: auth routes 30 a minute, homework, quiz and guardian read routes 12
 - No PDFs from the server: marksheet, transcript and attendance report (10.4) are null or not built.
 - Notice attachments use the local disk until bucket credentials are added, like homework files.
 - Confirm with the app team: section-wise position / size / average in results, `{examId}-combined`, `?from` / `?to` instead of terms in the attendance report, and `app_user.id` as `{teacherId}` in the teacher routine.
+
+## App contract decisions
+
+Decided on 4 November 2026, against the app developer's draft contract (`00_Conventions`, `01_Auth_and_Session`).
+
+- **Response format:** keep `status`, `message` and `data`. Anything the contract needs is added beside them, because the app ignores keys it does not know.
+- **Login flow:** stays as built: OTP, then the school or identity check, then PIN, then the token. There is no login straight after OTP.
+- **Guardian children:** guardians keep adding their own children with OTP, although the contract says only the school can link them.
+- **Token lifetime:** no limit for now.
+- **`school_id: null` for guardians:** we will ask the app developer to make `school_id`, `school_name` and `name` optional for guardians and guests.
+- **Paths and fields:** ours stay (`auth/send-otp`, not `auth/otp/request`, and no `challenge_id`). There is no student ID sign-in (A3).
+- **Role names:** the app sees `schoolAdmin` and `accounts`. Rows and tokens keep `admin` and `staff`, and requests can use either name.
+- **Session:** `set-pin` and `pin-login` add the session fields beside `token` and `user`, and `GET /auth/me` adds them without tokens. `student_id` is now the `/students/{id}` id, and the typed value moved to `entered_student_id`.
+- **Permissions and flags:** in `config/pathshala.php`, per role and the same for every school. They only list what this API can do, and guests get no permissions.
+- **`X-School-Id`:** compared with the user's school if sent, and 403 if different. Not checked for guardians. The school always comes from the token.
+- **Wrong PIN:** 422, because the app signs the user out on a 401.
+- **OTP resend:** `resend_after_seconds` is 1800. Look at this again when the SMS gateway is added.
+- **Lost replies:** `verify-otp` and `set-pin` are single-use, so the user repeats the step.
+- **`detail`:** student is class, section and roll, guardian is the child count and names, teacher is their subjects, and admin and staff get null. The labels are in Bangla, as in the contract's sample. School data stays as stored.
+- **Locked OTP:** 429 `rate_limited`.
+- **Later:** Bangla error messages.
+
+Other contract gaps still open: other 409 and 400 answers keep their status with `error.code = validation_failed`, an inactive student gets 403 rather than 422, `linked_students` can repeat an id across schools (the app can always send `child_id`, from `id` in `/guardian/children`), and `guardian/children` keeps its own fields rather than the A6 ones.
+
+**Deferred, to look at later: token expiry and refresh.** Not being built for now: an expiry on the access token, the `token_expired` error code, `POST /auth/refresh` and refresh token rotation. `TokenService` cannot yet tell an expired token from an invalid one, so that needs changing when this is picked up. `refresh_token` is optional in the contract, and without it the app signs the user out on a 401.
 
 ## Out-of-date docs
 

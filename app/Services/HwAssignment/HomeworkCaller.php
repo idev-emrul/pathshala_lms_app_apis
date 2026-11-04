@@ -27,6 +27,10 @@ class HomeworkCaller
 
     public function idempotencyKey(): string
     {
+        if ($this->user->role === AppUser::ROLE_GUARDIAN) {
+            return 'guardian:'.$this->user->id;
+        }
+
         return $this->userId ? 'staff:'.$this->userId : 'student:'.$this->user->verified_id;
     }
 }

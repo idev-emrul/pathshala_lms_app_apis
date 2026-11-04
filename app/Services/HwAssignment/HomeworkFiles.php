@@ -18,7 +18,7 @@ class HomeworkFiles
      * @param  array<int, UploadedFile>  $files
      * @return array<int, array{name: string, path: string, size: int}>
      */
-    public function store(Connection $db, array $files, string $folder, string $prefix): array
+    public function store(Connection $db, array $files, string $folder, string $prefix, string $module = 'homework'): array
     {
         $eiin = $db->table('institute_info')->value('institute_EIIN');
         $stored = [];
@@ -26,7 +26,7 @@ class HomeworkFiles
         try {
             foreach ($files as $index => $file) {
                 $name = sprintf('%s_%d_%s_%d.%s', $prefix, time(), Str::lower(Str::random(6)), $index, Str::lower($file->getClientOriginalExtension()));
-                $path = "{$eiin}/homework/{$folder}/{$name}";
+                $path = "{$eiin}/{$module}/{$folder}/{$name}";
 
                 if (! Storage::disk($this->disk())->putFileAs(dirname($path), $file, $name)) {
                     throw new RuntimeException('A homework file could not be saved.');

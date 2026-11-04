@@ -1,0 +1,1651 @@
+{
+    "info": {
+        "name": "Pathshala App API - Authentication",
+        "description": "Login for all five roles. Open a role and run its 'First login' from the top: each request saves flow_token for the next, and Set PIN or PIN login saves that role's token. A number with a PIN gets 422 and error.next = pin_login from Send OTP, so use 'After login' or 'Forgot PIN' for it. While OTP_FIXED is set, every OTP is 123456. Fill in the username, password and student variables first; they are empty on purpose. Requests run against real data, so anything created here is real.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "let body = {};",
+                    "try { body = pm.response.json(); } catch (e) {}",
+                    "const data = body.data || {};",
+                    "if (data.flow_token) { pm.collectionVariables.set('flow_token', data.flow_token); }",
+                    "const names = { schoolAdmin: 'admin', accounts: 'staff' };",
+                    "if (data.token && data.role) { pm.collectionVariables.set((names[data.role] || data.role) + '_token', data.token); }"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000/api/v1"
+        },
+        {
+            "key": "otp",
+            "value": "123456"
+        },
+        {
+            "key": "pin",
+            "value": "1234"
+        },
+        {
+            "key": "schl_id",
+            "value": "8"
+        },
+        {
+            "key": "class_code",
+            "value": "6"
+        },
+        {
+            "key": "student_id",
+            "value": "105002"
+        },
+        {
+            "key": "student_password",
+            "value": ""
+        },
+        {
+            "key": "other_school_name",
+            "value": "ABC High School"
+        },
+        {
+            "key": "other_class_name",
+            "value": "Six"
+        },
+        {
+            "key": "student_mobile",
+            "value": "01700000002"
+        },
+        {
+            "key": "teacher_mobile",
+            "value": "01700000005"
+        },
+        {
+            "key": "teacher_username",
+            "value": ""
+        },
+        {
+            "key": "teacher_password",
+            "value": ""
+        },
+        {
+            "key": "guardian_mobile",
+            "value": "01700000003"
+        },
+        {
+            "key": "admin_mobile",
+            "value": "01700000004"
+        },
+        {
+            "key": "admin_username",
+            "value": ""
+        },
+        {
+            "key": "admin_password",
+            "value": ""
+        },
+        {
+            "key": "staff_mobile",
+            "value": "01700000006"
+        },
+        {
+            "key": "staff_username",
+            "value": ""
+        },
+        {
+            "key": "staff_password",
+            "value": ""
+        },
+        {
+            "key": "flow_token",
+            "value": ""
+        },
+        {
+            "key": "student_token",
+            "value": ""
+        },
+        {
+            "key": "teacher_token",
+            "value": ""
+        },
+        {
+            "key": "guardian_token",
+            "value": ""
+        },
+        {
+            "key": "admin_token",
+            "value": ""
+        },
+        {
+            "key": "staff_token",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Student",
+            "description": "Set student_id and class_code to a real student, and student_password to that student's password.",
+            "item": [
+                {
+                    "name": "First login (password)",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Schools",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools"
+                            }
+                        },
+                        {
+                            "name": "Classes of the school",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools/{{schl_id}}/classes"
+                            }
+                        },
+                        {
+                            "name": "Check student",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/check",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify with password",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/verify-password",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"password\": \"{{student_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "First login (contact OTP)",
+                    "description": "If the student does not know the password. The OTP goes to the contact number in the school records.",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Check student",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/check",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Send OTP to the contact number",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/send-contact-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify the contact OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/verify-contact-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"otp\": \"{{otp}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Guest",
+                    "description": "Run only one of the two guest requests, then Set PIN.",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Guest with a school from the list",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/guest",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Guest with a typed school (\"Others\")",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/guest",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"school_name\": \"{{other_school_name}}\",\n  \"class_name\": \"{{other_class_name}}\",\n  \"student_id\": \"{{student_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "After login",
+                    "item": [
+                        {
+                            "name": "PIN login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/pin-login",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\",\n  \"pin\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{student_token}}"
+                                    },
+                                    {
+                                        "key": "X-School-Id",
+                                        "value": "{{schl_id}}",
+                                        "disabled": true,
+                                        "description": "Optional. A different school gets 403."
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        },
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{student_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/logout",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot PIN",
+                    "description": "After this request, run Verify OTP, Check student, a verify step and Set PIN from 'First login'. The old token stops working.",
+                    "item": [
+                        {
+                            "name": "Send OTP to reset the PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\",\n  \"reset_pin\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Teacher",
+            "description": "Set teacher_username and teacher_password to a login with user_type Teacher.",
+            "item": [
+                {
+                    "name": "First login",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Schools",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools"
+                            }
+                        },
+                        {
+                            "name": "Verify username and password",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/teacher/verify",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"username\": \"{{teacher_username}}\",\n  \"password\": \"{{teacher_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Guest (\"Others\" school)",
+                    "description": "For a school not in the list. No username or password. A number with a verified login cannot become a guest.",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Continue as guest",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/teacher/guest",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"school_name\": \"{{other_school_name}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "After login",
+                    "item": [
+                        {
+                            "name": "PIN login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/pin-login",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"role\": \"teacher\",\n  \"pin\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{teacher_token}}"
+                                    },
+                                    {
+                                        "key": "X-School-Id",
+                                        "value": "{{schl_id}}",
+                                        "disabled": true,
+                                        "description": "Optional. A different school gets 403."
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        },
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{teacher_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/logout",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot PIN",
+                    "description": "After this request, run Verify OTP, Verify username and password and Set PIN from 'First login'. The old token stops working.",
+                    "item": [
+                        {
+                            "name": "Send OTP to reset the PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"role\": \"teacher\",\n  \"reset_pin\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Guardian",
+            "description": "No guest login. The child's OTP goes to the contact number in the school records, or to the login number if the child has no valid one. Uses student_id and class_code as the child.",
+            "item": [
+                {
+                    "name": "First login",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{guardian_mobile}}\",\n  \"role\": \"guardian\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{guardian_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"guardian\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Schools",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools"
+                            }
+                        },
+                        {
+                            "name": "Classes of the school",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools/{{schl_id}}/classes"
+                            }
+                        },
+                        {
+                            "name": "Check child",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/guardian/check",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Send OTP to the child's contact number",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/guardian/send-child-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify the child OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/guardian/verify-child-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"otp\": \"{{otp}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "After login",
+                    "item": [
+                        {
+                            "name": "PIN login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/pin-login",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{guardian_mobile}}\",\n  \"role\": \"guardian\",\n  \"pin\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{guardian_token}}"
+                                    },
+                                    {
+                                        "key": "X-School-Id",
+                                        "value": "{{schl_id}}",
+                                        "disabled": true,
+                                        "description": "Optional. A different school gets 403."
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        },
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{guardian_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/logout",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot PIN",
+                    "description": "After this request, run Verify OTP, Check child, the two child OTP steps and Set PIN. The child must already be on the account from 'First login'. The old token stops working.",
+                    "item": [
+                        {
+                            "name": "Send OTP to reset the PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{guardian_mobile}}\",\n  \"role\": \"guardian\",\n  \"reset_pin\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Admin",
+            "description": "No guest login. Set admin_username and admin_password to a login with user_type Admin. Super Admin logins are refused.",
+            "item": [
+                {
+                    "name": "First login",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{admin_mobile}}\",\n  \"role\": \"schoolAdmin\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{admin_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"schoolAdmin\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Schools",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools"
+                            }
+                        },
+                        {
+                            "name": "Verify username and password",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/schoolAdmin/verify",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "After login",
+                    "item": [
+                        {
+                            "name": "PIN login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/pin-login",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{admin_mobile}}\",\n  \"role\": \"schoolAdmin\",\n  \"pin\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "X-School-Id",
+                                        "value": "{{schl_id}}",
+                                        "disabled": true,
+                                        "description": "Optional. A different school gets 403."
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        },
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/logout",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot PIN",
+                    "description": "After this request, run Verify OTP, Verify username and password and Set PIN from 'First login'. The old token stops working.",
+                    "item": [
+                        {
+                            "name": "Send OTP to reset the PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{admin_mobile}}\",\n  \"role\": \"schoolAdmin\",\n  \"reset_pin\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Staff",
+            "description": "No guest login. Set staff_username and staff_password to a login with user_type Accountant.",
+            "item": [
+                {
+                    "name": "First login",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{staff_mobile}}\",\n  \"role\": \"accounts\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{staff_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"accounts\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Schools",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/schools"
+                            }
+                        },
+                        {
+                            "name": "Verify username and password",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/accounts/verify",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"username\": \"{{staff_username}}\",\n  \"password\": \"{{staff_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "After login",
+                    "item": [
+                        {
+                            "name": "PIN login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/pin-login",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{staff_mobile}}\",\n  \"role\": \"accounts\",\n  \"pin\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{staff_token}}"
+                                    },
+                                    {
+                                        "key": "X-School-Id",
+                                        "value": "{{schl_id}}",
+                                        "disabled": true,
+                                        "description": "Optional. A different school gets 403."
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        },
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{staff_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/logout",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot PIN",
+                    "description": "After this request, run Verify OTP, Verify username and password and Set PIN from 'First login'. The old token stops working.",
+                    "item": [
+                        {
+                            "name": "Send OTP to reset the PIN",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"mobile_number\": \"{{staff_mobile}}\",\n  \"role\": \"accounts\",\n  \"reset_pin\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

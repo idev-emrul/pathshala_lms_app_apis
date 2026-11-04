@@ -74,7 +74,7 @@ class GuardianChildService
             ->values();
 
         if ($matches->isEmpty()) {
-            throw new ApiException('You do not have access to this', 403);
+            throw new ApiException('You do not have access to this', 403, errorCode: 'not_linked');
         }
 
         if ($matches->count() > 1) {

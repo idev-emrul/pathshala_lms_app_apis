@@ -9,6 +9,14 @@ class AppUser extends Model
     public const ROLE_STUDENT = 'student';
     public const ROLE_TEACHER = 'teacher';
     public const ROLE_GUARDIAN = 'guardian';
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_STAFF = 'staff';
+
+    // The app has its own names for these roles. Stored rows and tokens keep the names above.
+    private const APP_ROLE_NAMES = [
+        self::ROLE_ADMIN => 'schoolAdmin',
+        self::ROLE_STAFF => 'accounts',
+    ];
 
     protected $connection = 'master';
 
@@ -32,6 +40,16 @@ class AppUser extends Model
     ];
 
     protected $hidden = ['pin', 'auth_token'];
+
+    public static function appRoleName(string $role): string
+    {
+        return self::APP_ROLE_NAMES[$role] ?? $role;
+    }
+
+    public static function roleFromAppName(string $name): string
+    {
+        return array_flip(self::APP_ROLE_NAMES)[$name] ?? $name;
+    }
 
     protected function casts(): array
     {

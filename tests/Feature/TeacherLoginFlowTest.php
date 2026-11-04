@@ -37,6 +37,7 @@ class TeacherLoginFlowTest extends TestCase
                 default => null,
             });
             $mock->shouldReceive('findTeacher')->andReturn((object) ['teacher_code' => self::TEACHER_CODE, 'teacher_name' => self::TEACHER_NAME]);
+            $mock->shouldReceive('teacherSubjectNames')->andReturn(['English', 'Math']);
         });
     }
 
@@ -75,6 +76,9 @@ class TeacherLoginFlowTest extends TestCase
             ->assertJsonPath('data.user.role', 'teacher')
             ->assertJsonPath('data.user.is_verified', true)
             ->assertJsonPath('data.user.teacher_name', self::TEACHER_NAME)
+            ->assertJsonPath('data.name', self::TEACHER_NAME)
+            ->assertJsonPath('data.detail', 'English, Math')
+            ->assertJsonPath('data.permissions', config('pathshala.permissions.teacher'))
             ->assertJsonMissingPath('data.user.student_name');
 
         $user = AppUser::where('mobile_number', self::MOBILE)->where('role', 'teacher')->first();
@@ -130,7 +134,9 @@ class TeacherLoginFlowTest extends TestCase
             ->assertJsonPath('data.user.role', 'teacher')
             ->assertJsonPath('data.user.is_verified', false)
             ->assertJsonPath('data.user.school_name', 'ABC High School')
-            ->assertJsonPath('data.user.teacher_name', null);
+            ->assertJsonPath('data.user.teacher_name', null)
+            ->assertJsonPath('data.school_id', null)
+            ->assertJsonPath('data.permissions', []);
 
         $user = AppUser::where('mobile_number', self::MOBILE)->where('role', 'teacher')->first();
         $this->assertNull($user->schl_id);
@@ -237,6 +243,21 @@ class TeacherLoginFlowTest extends TestCase
         $studentFlow = $this->mobileFlow('student');
 
         $this->verify($studentFlow)->assertStatus(422)->assertJsonPath('message', 'Session expired or invalid. Please start again.');
+    }
+
+    public function test_subject_names_come_from_the_real_school_data(): void
+    {
+        $tenant = $this->tenant();
+
+        $teacherCode = $tenant->table('subject_teacher_info as link')
+            ->join('subject_info as subject', 'subject.subject_code', '=', 'link.subject_code')
+            ->value('link.teacher_code');
+
+        $names = app(SchoolDbService::class)->teacherSubjectNames($tenant, (int) $teacherCode);
+
+        $this->assertNotEmpty($names);
+        $this->assertSame(array_values(array_unique($names)), $names);
+        $this->assertSame([], app(SchoolDbService::class)->teacherSubjectNames($tenant, -1));
     }
 
     public function test_teacher_login_without_a_teacher_info_row_can_be_used(): void

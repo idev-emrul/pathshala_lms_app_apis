@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppUser;
 use App\Services\OtpService;
 use App\Services\StudentAuthService;
 use App\Services\TokenService;
@@ -15,7 +16,7 @@ class AuthController extends Controller
 {
     private const MOBILE_RULE = ['required', 'string', 'regex:/^01[3-9]\d{8}$/'];
 
-    private const ROLE_RULE = ['string', 'in:student,teacher,guardian'];
+    private const ROLE_RULE = ['string', 'in:student,teacher,guardian,admin,staff,schoolAdmin,accounts'];
 
     public function __construct(
         private OtpService $otp,
@@ -30,12 +31,13 @@ class AuthController extends Controller
             'role' => ['required', ...self::ROLE_RULE],
             'reset_pin' => ['sometimes', 'boolean'],
         ]);
+        $role = AppUser::roleFromAppName($input['role']);
 
         if (! $request->boolean('reset_pin')) {
-            $this->students->ensureNoAccountYet($input['mobile_number'], $input['role']);
+            $this->students->ensureNoAccountYet($input['mobile_number'], $role);
         }
 
-        $sent = $this->otp->send($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['role']);
+        $sent = $this->otp->send($input['mobile_number'], OtpService::PURPOSE_LOGIN, $role);
 
         return ApiResponse::success('OTP sent to '.Phone::mask($input['mobile_number']), $sent);
     }
@@ -49,8 +51,9 @@ class AuthController extends Controller
         ]);
 
         // The role comes from send-otp, which is where a number with an account is refused.
-        $sentRole = $this->otp->verify($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['otp'], $input['role'] ?? null);
-        $role = $sentRole ?? $input['role'] ?? 'student';
+        $givenRole = isset($input['role']) ? AppUser::roleFromAppName($input['role']) : null;
+        $sentRole = $this->otp->verify($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['otp'], $givenRole);
+        $role = $sentRole ?? $givenRole ?? 'student';
 
         $this->students->recordVerifiedMobile($input['mobile_number'], $role);
 
@@ -82,7 +85,7 @@ class AuthController extends Controller
 
         return ApiResponse::success(
             'Login successful',
-            $this->students->pinLogin($input['mobile_number'], $input['role'], $input['pin']),
+            $this->students->pinLogin($input['mobile_number'], AppUser::roleFromAppName($input['role']), $input['pin']),
         );
     }
 

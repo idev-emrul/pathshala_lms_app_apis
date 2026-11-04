@@ -19,7 +19,7 @@ class OtpService
     public function __construct(private OtpDriver $driver) {}
 
     /**
-     * @return array{expires_in_seconds: int, resend_left: int}
+     * @return array{expires_in_seconds: int, resend_after_seconds: int, resend_left: int}
      */
     public function send(string $mobileNumber, string $purpose, ?string $role = null): array
     {
@@ -48,6 +48,7 @@ class OtpService
 
         return [
             'expires_in_seconds' => config('pathshala.otp.ttl'),
+            'resend_after_seconds' => config('pathshala.otp.ttl'),
             'resend_left' => config('pathshala.otp.max_sends') - $result['send_count'],
         ];
     }
@@ -68,7 +69,7 @@ class OtpService
             'wrong' => throw new ApiException('Incorrect OTP', 422, ['attempts_left' => $result['attempts_left']]),
             'locked' => throw new ApiException(
                 'OTP blocked. Please try again after 1 hour.',
-                422,
+                429,
                 ['retry_after_seconds' => $result['retry']],
             ),
         };

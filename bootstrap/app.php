@@ -5,6 +5,7 @@ use App\Http\Middleware\AuthenticateAppToken;
 use App\Http\Middleware\AuthorizeAttendance;
 use App\Http\Middleware\AuthorizeGuardian;
 use App\Http\Middleware\AuthorizeHomework;
+use App\Http\Middleware\AuthorizeLeave;
 use App\Http\Middleware\AuthorizeNotice;
 use App\Http\Middleware\AuthorizeProfile;
 use App\Http\Middleware\AuthorizeResult;
@@ -36,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'result' => AuthorizeResult::class,
             'notice' => AuthorizeNotice::class,
             'attendance' => AuthorizeAttendance::class,
+            'leave' => AuthorizeLeave::class,
             'guardian' => AuthorizeGuardian::class,
             'activity' => RecordActivity::class,
         ]);
@@ -46,7 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Wrong OTPs, failed checks and the like are normal, not errors to log.
         $exceptions->dontReport(ApiException::class);
 
-        $exceptions->render(fn (ApiException $e) => ApiResponse::error($e->getMessage(), $e->status, $e->data));
+        $exceptions->render(fn (ApiException $e) => ApiResponse::error($e->getMessage(), $e->status, $e->data, code: $e->errorCode));
 
         $exceptions->render(fn (ValidationException $e) => ApiResponse::error(
             $e->getMessage(),

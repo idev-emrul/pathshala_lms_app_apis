@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\ApiException;
+use App\Models\AppGuardianChild;
 use App\Models\AppUser;
 use App\Models\AppUserLog;
 use App\Support\Phone;
@@ -156,15 +157,23 @@ class StudentAuthService
     {
         $flow = $this->tokens->readFlowToken($flowToken, [TokenService::STEP_READY], singleUse: true);
 
+        $child = $flow['guardian_child'] ?? null;
+
         // Checked again here, because a flow token can be issued before another login finishes.
-        $verifiedId = $flow['is_verified'] ? (string) ($flow['teacher_user_id'] ?? $flow['student_id']) : null;
-        $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], $flow['schl_id'], $verifiedId);
+        if ($child) {
+            if (! $this->guardianCanUseChild($flow['mobile_number'], $child['schl_id'], $child['student_id'])) {
+                throw new ApiException('This number is already linked to another account. Log in with your PIN or use a different number.', 409);
+            }
+        } else {
+            $verifiedId = $flow['is_verified'] ? (string) ($flow['teacher_user_id'] ?? $flow['student_id']) : null;
+            $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], $flow['schl_id'], $verifiedId);
+        }
 
         $user = AppUser::firstOrNew(['mobile_number' => $flow['mobile_number'], 'role' => $flow['role']]);
         $isPinReset = $user->pin !== null;
         $dbName = $flow['schl_id'] ? $this->schools->findSchool($flow['schl_id'])->db_name : null;
 
-        $token = DB::connection('master')->transaction(function () use ($user, $flow, $pin, $isPinReset, $dbName) {
+        $token = DB::connection('master')->transaction(function () use ($user, $flow, $pin, $isPinReset, $dbName, $child) {
             $user->fill([
                 'verified_id' => $flow['is_verified'] ? ($flow['teacher_user_id'] ?? $flow['student_id']) : null,
                 'is_verified' => $flow['is_verified'],
@@ -177,6 +186,10 @@ class StudentAuthService
                 'pin' => Hash::make($pin),
                 'last_login_at' => now(),
             ])->save();
+
+            if ($child) {
+                AppGuardianChild::firstOrCreate(['app_user_id' => $user->id] + $child);
+            }
 
             $token = $this->tokens->issueAppToken($user, $dbName);
             $user->update(['auth_token' => $token]);
@@ -247,6 +260,23 @@ class StudentAuthService
         }
     }
 
+    /**
+     * A guardian with an account resets their PIN through a child already on it, so that a
+     * person holding only the number cannot get in with some other child's contact OTP.
+     */
+    public function guardianCanUseChild(string $mobileNumber, int $schlId, string $studentId): bool
+    {
+        $user = AppUser::where('mobile_number', $mobileNumber)->where('role', AppUser::ROLE_GUARDIAN)->first();
+
+        if (! $user?->pin) {
+            return true;
+        }
+
+        $children = AppGuardianChild::where('app_user_id', $user->id);
+
+        return ! $children->exists() || $children->where('schl_id', $schlId)->where('student_id', $studentId)->exists();
+    }
+
     public function logout(AppUser $user): void
     {
         DB::connection('master')->transaction(function () use ($user) {
@@ -264,6 +294,10 @@ class StudentAuthService
             'mobile_number' => Phone::mask($user->mobile_number),
             'language_mode' => $user->language_mode,
         ];
+
+        if ($user->role === AppUser::ROLE_GUARDIAN) {
+            return $profile + ['children_count' => AppGuardianChild::where('app_user_id', $user->id)->count()];
+        }
 
         if ($user->role === AppUser::ROLE_TEACHER) {
             $teacher = ($user->is_verified && $tenant) ? $this->schools->findTeacher($tenant, $user->verified_id) : null;
@@ -365,13 +399,19 @@ class StudentAuthService
 
     private function userData(AppUser $user, ?string $name): array
     {
-        return [
+        $data = [
             'id' => $user->id,
             'role' => $user->role,
             'is_verified' => $user->is_verified,
             'school_name' => $user->school_name,
             'class_name' => $user->class_name,
-            ($user->role === AppUser::ROLE_TEACHER ? 'teacher_name' : 'student_name') => $name,
         ];
+
+        // A guardian has no name or school of their own. Those belong to each child.
+        return match ($user->role) {
+            AppUser::ROLE_GUARDIAN => $data,
+            AppUser::ROLE_TEACHER => $data + ['teacher_name' => $name],
+            default => $data + ['student_name' => $name],
+        };
     }
 }

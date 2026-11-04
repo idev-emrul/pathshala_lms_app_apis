@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AppLoginAttempt;
+use App\Models\AppUser;
 use App\Services\OtpService;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -114,6 +115,42 @@ class OtpRulesTest extends TestCase
         $this->travel(31)->minutes();
 
         $this->verify('123456')->assertStatus(422)->assertJsonPath('message', 'OTP expired. Please request a new OTP.');
+    }
+
+    public function test_the_otp_can_only_be_used_for_the_role_it_was_sent_for(): void
+    {
+        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'guardian'])->assertOk();
+
+        $this->postJson('/api/v1/auth/verify-otp', ['mobile_number' => self::MOBILE, 'otp' => '123456', 'role' => 'student'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This OTP was sent for a different role. Please start again.');
+
+        $this->assertSame(0, $this->attempt()->wrong_attempts);
+        $this->assertSame(0, AppUser::count());
+
+        // Left out on verify, the role is the one the OTP was sent for, not student.
+        $this->verify('123456')->assertOk();
+        $this->assertSame('guardian', AppUser::where('mobile_number', self::MOBILE)->value('role'));
+    }
+
+    public function test_a_number_with_an_account_cannot_get_past_the_pin_check_through_another_role(): void
+    {
+        AppUser::create(['mobile_number' => self::MOBILE, 'role' => 'teacher', 'pin' => 'x']);
+
+        $this->send()->assertOk();
+
+        $this->postJson('/api/v1/auth/verify-otp', ['mobile_number' => self::MOBILE, 'otp' => '123456', 'role' => 'teacher'])
+            ->assertStatus(422);
+    }
+
+    public function test_going_back_to_pick_another_role_keeps_the_otp_already_sent(): void
+    {
+        $this->send()->assertOk();
+
+        $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'guardian'])->assertStatus(429);
+
+        $this->postJson('/api/v1/auth/verify-otp', ['mobile_number' => self::MOBILE, 'otp' => '123456', 'role' => 'guardian'])->assertOk();
+        $this->assertSame('guardian', AppUser::where('mobile_number', self::MOBILE)->value('role'));
     }
 
     public function test_login_and_contact_counters_are_separate(): void

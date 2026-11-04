@@ -27,6 +27,6 @@ class HomeworkCaller
 
     public function idempotencyKey(): string
     {
-        return 'staff:'.$this->userId;
+        return $this->userId ? 'staff:'.$this->userId : 'student:'.$this->user->verified_id;
     }
 }

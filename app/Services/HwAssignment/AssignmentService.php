@@ -203,7 +203,7 @@ class AssignmentService
     /**
      * Several sessions can be running at once, so the newest one with students in this class wins.
      */
-    private function targetSession(Connection $db, array $target): ?int
+    public function targetSession(Connection $db, array $target): ?int
     {
         $running = $db->table('session_info')->where('running_session', 1)->orderByDesc('session_code')->pluck('session_code');
 
@@ -216,7 +216,7 @@ class AssignmentService
         return null;
     }
 
-    private function targetStudents(Connection $db, array $target, int $sessionId)
+    public function targetStudents(Connection $db, array $target, int $sessionId)
     {
         return $db->table('student_current_status_info')
             ->where('session_code', $sessionId)

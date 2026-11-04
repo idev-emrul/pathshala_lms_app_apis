@@ -30,7 +30,7 @@ return [
             'database' => null,
         ],
 
-        // The same school, used only for writing homework. See SchoolDbService.
+        // The same school, used only for writing homework and quizzes. See SchoolDbService.
         'tenant_homework' => $mysql + [
             'database' => null,
         ],

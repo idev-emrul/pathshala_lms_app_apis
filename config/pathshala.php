@@ -17,10 +17,14 @@ return [
         'lock_seconds' => 3600,
     ],
 
-    // Wrong student passwords and PINs, per student or per mobile number.
+    // Wrong passwords, PINs and guardian child checks, per person or per mobile number.
     'login_limit' => [
         'attempts' => 5,
         'seconds' => 900,
+    ],
+
+    'guardian' => [
+        'max_children' => 10,
     ],
 
     'activity_log_path' => env('ACTIVITY_LOG_PATH', storage_path('logs/activity')),

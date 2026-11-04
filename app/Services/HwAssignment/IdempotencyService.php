@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Services\SchoolDbService;
 use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\Request;
 use Throwable;
 
 /**
@@ -14,6 +15,22 @@ use Throwable;
 class IdempotencyService
 {
     public function __construct(private SchoolDbService $schools) {}
+
+    /**
+     * Runs the action once per Idempotency-Key, or every time when no key is sent.
+     *
+     * @return array{data: array, status: int, replayed: bool}
+     */
+    public function once(Request $request, HomeworkCaller $caller, string $endpoint, int $status, Closure $action): array
+    {
+        $key = $request->header('Idempotency-Key');
+
+        if (blank($key)) {
+            return ['data' => $action(), 'status' => $status, 'replayed' => false];
+        }
+
+        return $this->remember($caller, $key, $endpoint, $status, $action);
+    }
 
     /**
      * @return array{data: array, status: int, replayed: bool}

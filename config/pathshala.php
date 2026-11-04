@@ -36,15 +36,15 @@ return [
     // Sent at login. Only what this API can do, because the app shows a screen for each one.
     // Staff have no routes yet, and guests get none of these.
     'permissions' => [
-        'student' => ['homework.view', 'quiz.view', 'leave.view', 'early_leave.view'],
-        'guardian' => ['homework.view', 'quiz.view', 'leave.view', 'early_leave.view', 'early_leave.approve'],
-        'teacher' => ['homework.manage', 'quiz.manage', 'leave.review', 'early_leave.approve'],
-        'admin' => ['leave.review', 'early_leave.approve'],
+        'student' => ['homework.view', 'quiz.view', 'leave.view', 'early_leave.view', 'behaviour.view'],
+        'guardian' => ['homework.view', 'quiz.view', 'leave.view', 'early_leave.view', 'early_leave.approve', 'behaviour.view'],
+        'teacher' => ['homework.manage', 'quiz.manage', 'leave.review', 'early_leave.approve', 'behaviour.manage'],
+        'admin' => ['leave.review', 'early_leave.approve', 'behaviour.manage', 'behaviour.resolve'],
         'staff' => [],
     ],
 
     // The same for every school for now, as nothing stores this per school.
-    'feature_flags' => ['homework', 'teacher_homework', 'quiz', 'leave', 'early_leave'],
+    'feature_flags' => ['homework', 'teacher_homework', 'quiz', 'leave', 'early_leave', 'behaviour', 'teacher_behaviour', 'admin_behaviour'],
 
     'activity_log_path' => env('ACTIVITY_LOG_PATH', storage_path('logs/activity')),
 

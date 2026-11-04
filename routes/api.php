@@ -7,6 +7,9 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\GuardianAuthController;
 use App\Http\Controllers\Auth\StudentAuthController;
 use App\Http\Controllers\Auth\TeacherAuthController;
+use App\Http\Controllers\Behaviour\BehaviourController;
+use App\Http\Controllers\Behaviour\BehaviourIncidentController;
+use App\Http\Controllers\Behaviour\BehaviourReportController;
 use App\Http\Controllers\ClassRoutine\StudentRoutineController;
 use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
 use App\Http\Controllers\Guardian\GuardianChildController;
@@ -197,6 +200,29 @@ Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:teacher']
         Route::get('homework/{homeworkId}/submissions/{studentId}', 'work');
         Route::post('homework/{homeworkId}/submissions/{studentId}/assessment', 'assess')->middleware('activity:assess_homework');
         Route::post('homework/{homeworkId}/submissions/{studentId}/resubmission', 'requestResubmission')->middleware('activity:request_resubmission');
+    });
+
+// Module 7 - Behavioural Indicator Report
+Route::middleware(['throttle:behaviour', 'jwt.app', 'tenant', 'behaviour:viewer', 'cache.headers:private;etag'])
+    ->get('students/{studentId}/behaviour', [BehaviourController::class, 'overview'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:behaviour', 'jwt.app', 'tenant', 'behaviour:staff'])
+    ->group(function () {
+        Route::get('teacher/behaviour/roster', [BehaviourController::class, 'roster']);
+        Route::post('behaviour/quick-entry', [BehaviourController::class, 'quickEntry'])->middleware('activity:behaviour_quick_entry');
+        Route::post('behaviour/recognition', [BehaviourController::class, 'recognition'])->middleware('activity:behaviour_recognition');
+        Route::get('behaviour/incidents', [BehaviourIncidentController::class, 'index']);
+        Route::post('behaviour/incidents', [BehaviourIncidentController::class, 'store'])->middleware('activity:create_incident');
+        Route::get('behaviour/reports', [BehaviourReportController::class, 'reports']);
+    });
+
+Route::middleware(['throttle:behaviour', 'jwt.app', 'tenant', 'behaviour:admin'])
+    ->group(function () {
+        Route::match(['patch', 'post'], 'behaviour/incidents/{incidentId}', [BehaviourIncidentController::class, 'update'])
+            ->where('incidentId', '(inc-)?[0-9]+')
+            ->middleware('activity:update_incident');
+        Route::get('admin/behaviour/dashboard', [BehaviourReportController::class, 'dashboard']);
     });
 
 // Module 3 - Class Routine

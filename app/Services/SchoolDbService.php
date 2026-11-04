@@ -99,6 +99,17 @@ class SchoolDbService
         return DB::connection('tenant_attendance');
     }
 
+    /**
+     * Behaviour writes to bh_ tables, and queues messages in sl_notifications.
+     */
+    public function connectForBehaviour(string $dbName): Connection
+    {
+        config(['database.connections.tenant_behaviour.database' => $dbName]);
+        DB::purge('tenant_behaviour');
+
+        return DB::connection('tenant_behaviour');
+    }
+
     public function connectForQuiz(string $dbName): Connection
     {
         return $this->connectForHomework($dbName);

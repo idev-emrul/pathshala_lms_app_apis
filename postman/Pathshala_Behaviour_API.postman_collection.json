@@ -1,0 +1,409 @@
+{
+    "info": {
+        "name": "Pathshala App API - Behaviour",
+        "description": "Behavioural Indicator Report (Module 7). Log in first with the Authentication collection and paste each role's token into the token variables here. Set student_id to a current_status_info_id: placement.homework_student_id from /auth/me, or student_id from the roster. Every response is { status, message, data }, and errors also have error { code, message, details }. These requests run against real data, and the web system reads the same rows.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "let body = {};",
+                    "try { body = pm.response.json(); } catch (e) {}",
+                    "if (body.data && body.data.id && String(body.data.id).startsWith('inc-')) { pm.collectionVariables.set('incident_id', body.data.id); }"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000/api/v1"
+        },
+        {
+            "key": "student_id",
+            "value": ""
+        },
+        {
+            "key": "child_id",
+            "value": ""
+        },
+        {
+            "key": "class_id",
+            "value": ""
+        },
+        {
+            "key": "incident_id",
+            "value": ""
+        },
+        {
+            "key": "occurred_at",
+            "value": ""
+        },
+        {
+            "key": "student_token",
+            "value": ""
+        },
+        {
+            "key": "guardian_token",
+            "value": ""
+        },
+        {
+            "key": "teacher_token",
+            "value": ""
+        },
+        {
+            "key": "admin_token",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Overview",
+            "item": [
+                {
+                    "name": "7.1 Behaviour overview (student)",
+                    "description": "Never has incidents. Also has period, support_required, feedback and goals.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/behaviour"
+                    }
+                },
+                {
+                    "name": "7.1 Behaviour overview (guardian)",
+                    "description": "child_id is id from /guardian/children. It tells two children with the same id apart.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guardian_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/behaviour?child_id={{child_id}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Teacher",
+            "item": [
+                {
+                    "name": "7.2 Roster",
+                    "description": "Only assigned students. Optional: class_id, section_id, session_id, search.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/teacher/behaviour/roster"
+                    }
+                },
+                {
+                    "name": "7.3 Quick entry",
+                    "description": "Optional: comment, subject_id, observed_on, support_required.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/quick-entry",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"student_id\": \"{{student_id}}\",\n    \"ratings\": {\n        \"responsibility\": \"excellent\",\n        \"punctuality\": \"good\",\n        \"teamwork\": \"good\"\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "7.3 Quick entry with Support Required",
+                    "description": "Queues a message to the guardian, with no details.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/quick-entry",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"student_id\": \"{{student_id}}\",\n    \"ratings\": {\n        \"self_control\": \"needs_support\"\n    },\n    \"comment\": \"শিক্ষকের মন্তব্য\",\n    \"support_required\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "7.4 Positive recognition",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/recognition",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"student_id\": \"{{student_id}}\",\n    \"tag\": \"helpful_student\",\n    \"note\": \"সহপাঠীকে সাহায্য করেছে।\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Incidents",
+            "item": [
+                {
+                    "name": "7.5 Incident log (teacher)",
+                    "description": "A teacher sees incidents of assigned students. Optional: status, student_id.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/incidents"
+                    }
+                },
+                {
+                    "name": "7.5 Incident log (admin)",
+                    "description": "An admin sees the whole school.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/incidents"
+                    }
+                },
+                {
+                    "name": "7.6 Log an incident",
+                    "description": "Set occurred_at first, in UTC, such as 2026-11-03T06:30:00Z. Saves incident_id.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/incidents",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"student_id\": \"{{student_id}}\",\n    \"occurred_at\": \"{{occurred_at}}\",\n    \"location\": \"শ্রেণিকক্ষ ২০৪\",\n    \"category\": \"শ্রেণিকক্ষে বিশৃঙ্খলা\",\n    \"description\": \"বিবরণ\",\n    \"action_taken\": \"ক্লাসের পর কথা বলা হয়েছে।\",\n    \"parent_contacted\": false\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "7.7 Move to under review",
+                    "description": "Admin only, so a teacher gets 403.",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/incidents/{{incident_id}}",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"under_review\",\n    \"follow_up_note\": \"অভিভাবকের সাথে সময় ঠিক করা হয়েছে।\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "7.7 Resolve",
+                    "description": "A note is required to resolve. The status only moves forward.",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/incidents/{{incident_id}}",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"resolved\",\n    \"follow_up_note\": \"আচরণে উন্নতি দেখা গেছে।\",\n    \"notify_guardian\": false\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Reports",
+            "item": [
+                {
+                    "name": "Dashboard (admin)",
+                    "description": "Optional: session_id, class_id, section_id, period=term or month, current, previous.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/admin/behaviour/dashboard"
+                    }
+                },
+                {
+                    "name": "Student report",
+                    "description": "Optional: subject_id, current, previous.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/reports?scope=student&student_id={{student_id}}&period=month"
+                    }
+                },
+                {
+                    "name": "Class report",
+                    "description": "Set class_id first. A teacher only gets their own students.",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/behaviour/reports?scope=class&class_id={{class_id}}&period=month"
+                    }
+                }
+            ]
+        }
+    ]
+}

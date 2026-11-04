@@ -1,6 +1,6 @@
 # Pathshala App API
 
-Laravel 12 API-only backend for the Pathshala mobile app. It has login for students, teachers, guardians, admins and staff, the homework, quiz and leave modules, and five more modules of the app team's contract: class routine, student profile, results, notices and attendance. It has its own code but uses the same databases as the live Pathshala project.
+Laravel 12 API-only backend for the Pathshala mobile app. It has login for students, teachers, guardians, admins and staff, the homework, quiz, leave and behaviour modules, and five more modules of the app team's contract: class routine, student profile, results, notices and attendance. It has its own code but uses the same databases as the live Pathshala project.
 
 Last updated: 4 November 2026.
 
@@ -18,15 +18,13 @@ Last updated: 4 November 2026.
 | Results (module 2) | Built, 4 routes |
 | Notices (module 5) | Built, 4 routes. No push yet |
 | Attendance (module 10) | Built, 5 routes, with guardian SMS from the register. 10.4 (PDF) is the app team's |
-| Activity log | Built, monthly files, changes only |
-| Tests | 121 passing at the last run, without `HomeworkApiTest` (see Tests) |
-| Other 3 roles (guardian, admin, staff login), OTP SMS gateway, push, cloud uploads | Not built |
+| OTP SMS gateway, push, cloud uploads | Not built |
 | Quiz API (13.1 to 13.10, and read-only for guardians) | Built, tested on made-up data only. Web models not available, see Quiz API |
 | Leave API (Modules 11 and 12, 16 routes) | Built to match the web system's code, tested on made-up data only |
+| Behaviour API (Module 7, 9 routes) | Built to match the web system's code, tested on made-up data only |
 | Activity log | Built, monthly files, changes only |
 | App contract, auth part | Partly done, see App contract decisions |
-| Tests | 218 passing at the last run |
-| SMS gateway, cloud uploads | Not built |
+| Tests | 273 passing at the last run. 47 more, in `AttendanceApiTest`, `NoticeApiTest` and `ProfileApiTest`, cannot run until the `app_` tables exist in `pathshala_borderguardsylhet` (see Tests) |
 
 ## Commands
 
@@ -53,6 +51,7 @@ php artisan otp:prune
   | `tenant_profile` | Profile | `app_stu_profile_change_request` |
   | `tenant_result` | Results | `exam_overall_result.remarks_note` and `overall_dom` only (the teacher's comment) |
   | `tenant_notice` | Notices | `app_notice`, `app_notice_read` |
+  | `tenant_behaviour` | Behaviour | `bh_` tables and `sl_notifications` (rows with `module = 'bh'`) |
   | `tenant_attendance` | Attendance | the day columns `d1`..`d31`, `attendance_modifier`, `attendance_DOM` of `attendance_info` (and a new month row), `app_attendance_register_log`, new rows in `message_receiver_info` (the web SMS log) |
 
   `exam_overall_result`, `attendance_info` and `message_receiver_info` are web tables. Write them only the way the web system does (see each module below).
@@ -101,6 +100,7 @@ One per school. The name comes from `school_information.db_name`. Test school: `
 | `app_attendance_register_log` | This project. Every register submitted from the app (who, when, what) |
 | `qz_*`, `qb_questions`, `qb_question_options`, `perf_grading_bands` | Quiz. See `doc_resource/quiz_module_plan.md` |
 | `sl_*`, `slv_*`, `el_*` | Leave and early leave. See `doc_resource/student_leave_module_plan.md` |
+| `bh_*` | Behaviour. See `doc_resource/behaviour_module_plan.md` |
 | `class_teacher_info` | Which teacher is class teacher of a section. Decides who reviews leave |
 | `attendance_info` | One row per `current_status_info_id` and month. `d1` to `d31`: 0 not marked, 1 present, 2 absent, 3 leave, 4 holiday, 5 fugitive |
 
@@ -128,6 +128,7 @@ app/Http/Controllers/
   Attendance/      StudentAttendanceController, TeacherAttendanceController
   Quiz/            StudentQuizController, TeacherQuizController
   Leave/           LeaveController, EarlyLeaveController
+  Behaviour/       BehaviourController, BehaviourIncidentController, BehaviourReportController
 app/Http/Middleware/
   AuthenticateAppToken    jwt.app: checks the token
   ConnectTenant           tenant: opens the school database
@@ -139,6 +140,7 @@ app/Http/Middleware/
   AuthorizeAttendance     attendance:student or attendance:teacher
   AuthorizeGuardian       guardian: guardian accounts only
   AuthorizeLeave          leave:student, leave:staff, leave:admin or leave:approver
+  AuthorizeBehaviour      behaviour:viewer, behaviour:staff or behaviour:admin
   RecordActivity          activity:action_name
 app/Services/
   OtpService, SchoolDbService, StudentAuthService, TeacherAuthService, AdminStaffAuthService, TokenService, ActivityLogService,
@@ -159,11 +161,12 @@ tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, Hom
                    RoutineApiTest, ProfileApiTest, ResultApiTest, NoticeApiTest, AttendanceApiTest
   Quiz/            QuizReader, QuizAttemptService, QuizTeacherService, QuizLifecycle
   Leave/           LeaveService, EarlyLeaveService, LeaveSupport
+  Behaviour/       BehaviourEntryService, BehaviourIncidentService, BehaviourReportService, BehaviourSupport, BehaviourText
 doc_resource/      Plans from the web system. hw_api_v1.md, qz_api_v1.md and leave_api_v1.md are the contracts
 postman/           Pathshala_Auth_API (login for all five roles), Pathshala_App_API (old, student login), Pathshala_Homework_API (login and homework),
-                   Pathshala_Guardian_API (guardian login and children), Pathshala_Quiz_API, Pathshala_Leave_API
+                   Pathshala_Guardian_API (guardian login and children), Pathshala_Quiz_API, Pathshala_Leave_API, Pathshala_Behaviour_API
 public/auth-test.html   Test UI. Delete before going live
-tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, GuardianLoginFlowTest, AdminStaffLoginFlowTest, HomeworkApiTest, QuizApiTest, LeaveApiTest
+tests/Feature/     OtpRulesTest, StudentLoginFlowTest, TeacherLoginFlowTest, GuardianLoginFlowTest, AdminStaffLoginFlowTest, HomeworkApiTest, QuizApiTest, LeaveApiTest, BehaviourApiTest
 ```
 
 Every module follows the homework structure: its own controller and service folder, an `Authorize*` middleware that builds a `*Caller` from the token and the school database (never from the URL or body), a write connection only if it writes, a feature test and a Postman collection. A new module should do the same.
@@ -430,11 +433,37 @@ Where this differs from the web system, on purpose:
 - Super Admin logins cannot use this, because they cannot log in to the app.
 - Writes run in a transaction, and the error envelope is this project's.
 
+## Behaviour API
+
+Plan: `doc_resource/behaviour_module_plan.md`. The web system reads the same rows, so its code decides the details: `application/models/behaviour/` and the "MODULE 7" part of `application/controllers/api/v1.php` in the web folder named under Leave API. Check it before changing stored values or response fields.
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/students/{id}/behaviour` | 7.1. The student, a guardian of a linked child, or a teacher or admin for a student in their scope. With ETag |
+| GET | `/teacher/behaviour/roster` | 7.2. Teacher or admin. `class_id`, `section_id`, `session_id`, `search` are optional |
+| POST | `/behaviour/quick-entry` | 7.3. Teacher or admin. `comment`, `subject_id`, `observed_on`, `support_required` are optional |
+| POST | `/behaviour/recognition` | 7.4. Teacher or admin. `date` is optional |
+| GET, POST | `/behaviour/incidents` | 7.5, 7.6. Teacher or admin. `support_required` is optional on POST |
+| PATCH, POST | `/behaviour/incidents/{id}` | 7.7. Admin only. `action_taken`, `parent_contacted`, `support_required`, `notify_guardian` are optional |
+| GET | `/behaviour/reports?scope=student\|class&period=month\|term` | Proposal. Teacher or admin, in their scope |
+| GET | `/admin/behaviour/dashboard` | Proposal. Admin only |
+
+- `{id}` is `current_status_info_id`. Body ids take `12` or `student-12`, and incidents `3` or `inc-3`. Logins are checked on every request.
+- A teacher's students: class teacher of the section, or subject teacher of the class. A row with an empty or 0 session, section or shift counts for all, and the session does not have to be running. A teacher with no `teacher_code` has none. Only active students can be written for.
+- **Students and guardians never see an incident**, and incident details never go in a guardian message.
+- Percents are worked out live: each indicator is the average of its `bh_ratings.score` (100, 75, 50, 25) in the period, and overall is the average of the indicators that have ratings. 85+ is `excellent`, 70+ `good`, 55+ `developing`, else `needs_support`. A period is a `bh_terms` row, or a month if the session has no terms.
+- `bh_options` can change the indicators and tags. A turned-off one is left out of entry and percents, and a type with no rows keeps the defaults.
+- The incident status only moves forward, and resolving needs `follow_up_note`. `bh_incident_history` is append only.
+- Messages are queued in `sl_notifications` with `module = 'bh'`, and nothing sends them yet. Support Required goes only when ticked, never from a rating.
+- Dates in the API are UTC, but the web's API sends `+06:00`. `occurred_at` with no zone is read as UTC, but as school time on the web.
+- A school without the `bh_` tables answers 503 `not_set_up`. `Idempotency-Key` works on 7.3, 7.4 and 7.6.
+- Not built: push, the `/notifications` feed, and writing goals or terms from the app. Those stay on the web.
+
 ## Activity log
 
 File: `storage/logs/activity/activity_YYYY_MM.log`, one JSON line per event, one file per month.
 
-Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `add_child`, `remove_child`, `create_quiz`, `accept_quiz`, `start_quiz_attempt`, `submit_quiz`, `save_quiz_marks`, `release_quiz`, `apply_leave`, `withdraw_leave`, `decide_leave`, `create_early_leave`, `decide_early_leave`, `release_early_leave`, `request_profile_change`, `comment_result`, `publish_notice`, `submit_attendance`. Notice read marks are not logged. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
+Only changes are logged, not views: `create_homework`, `update_homework`, `delete_homework`, `submit_homework`, `assess_homework`, `request_resubmission`, `add_child`, `remove_child`, `create_quiz`, `accept_quiz`, `start_quiz_attempt`, `submit_quiz`, `save_quiz_marks`, `release_quiz`, `apply_leave`, `withdraw_leave`, `decide_leave`, `create_early_leave`, `decide_early_leave`, `release_early_leave`, `behaviour_quick_entry`, `behaviour_recognition`, `create_incident`, `update_incident`, `request_profile_change`, `comment_result`, `publish_notice`, `submit_attendance`. Notice read marks are not logged. To log a new route, add `->middleware('activity:action_name')`. Failed requests and replayed creates are not logged.
 
 ```json
 {"time":"2026-11-02 14:10:00","app_user_id":1,"role":"teacher","action":"create_homework","message":"Hasan created homework: Algebra","details":{"homeworkId":"3"},"ip_address":"127.0.0.1"}
@@ -446,8 +475,7 @@ Never log answers, marks, feedback, passwords, tokens or `db_name`. Login, logou
 
 `.env` needs `APP_KEY`, the `DB_*` values, `JWT_SECRET`, `TOKEN_SALT`, `OTP_DRIVER`, `OTP_FIXED`, and optionally `FLOW_TOKEN_TTL`, `HW_FILES_DISK`, `HW_FILES_URL`, `ACTIVITY_LOG_PATH`, `SMS_ENABLED` (default false: no real SMS), `SMS_WEB_TOKEN_URL`, `SMS_ISMS_URL`.
 
-Rate limits: auth routes 30 a minute; homework, routine, profile, result, notice and attendance routes 120 a minute each; all per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait.
-Rate limits: auth routes 30 a minute, homework, quiz and guardian read routes 120 a minute, both per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait. Guardians: 5 failed child checks and 5 child OTP sends per number in the same way.
+Rate limits: auth routes 30 a minute; homework, quiz, leave, guardian read, routine, profile, result, notice, attendance and behaviour routes 120 a minute each; all per IP. Wrong passwords and PINs: 5 attempts, then a 15-minute wait. Guardians: 5 failed child checks and 5 child OTP sends per number in the same way.
 
 ## Tests
 
@@ -457,6 +485,7 @@ Rate limits: auth routes 30 a minute, homework, quiz and guardian read routes 12
 - `pathshala_app_test_school` is created by `HomeworkApiTest`, with the structure of the real tables and made-up rows. All homework writes in tests go here.
 - `pathshala_app_test_guardian_a` and `_b` are created the same way by `GuardianLoginFlowTest`, for children in two schools.
 - `pathshala_app_test_quiz` is created the same way by `QuizApiTest`. All quiz writes in tests go here.
+- `pathshala_app_test_leave` and `pathshala_app_test_behaviour` are created the same way by `LeaveApiTest` and `BehaviourApiTest`.
 - Login tests read real school data through the read-only connection, and write nothing to it.
 - Real teacher passwords are unknown, so the login test uses a stand-in account with a `$2a$` hash.
 - On XAMPP's MariaDB, strict mode refuses the old `0000-00-00` defaults when seeding. The module tests set `sql_mode = ''` on their seeding connection. `HomeworkApiTest` does not yet, so it fails there (it passes on MySQL 8 / Laragon).

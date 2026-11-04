@@ -1,0 +1,544 @@
+{
+    "info": {
+        "name": "Pathshala App API - Attendance",
+        "description": "Module 10: a student's attendance report for a duration (10.1, ?from=&to=, as the web profile's search), one month (10.2), the session summary (10.3), and the class teacher's register (10.5, 10.6). 10.4 (PDF) is built by the app team. Run '0. Log in' first; the student Profile step saves student_row_id. As the teacher, run 10.5 first: it saves section_id and the first student for 10.6. Statuses: present, absent, leave, holiday, fugitive, pending (no late). The register accepts present, absent and fugitive, and never overwrites leave. Every response is { status, message, data }; errors also have errors for bad fields.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000/api/v1"
+        },
+        {
+            "key": "schl_id",
+            "value": "8"
+        },
+        {
+            "key": "otp",
+            "value": "123456"
+        },
+        {
+            "key": "pin",
+            "value": "1234"
+        },
+        {
+            "key": "flow_token",
+            "value": ""
+        },
+        {
+            "key": "student_mobile",
+            "value": "01700000003"
+        },
+        {
+            "key": "student_class_code",
+            "value": "11"
+        },
+        {
+            "key": "student_registration_id",
+            "value": "107837"
+        },
+        {
+            "key": "student_password",
+            "value": ""
+        },
+        {
+            "key": "student_token",
+            "value": ""
+        },
+        {
+            "key": "teacher_mobile",
+            "value": "01700000004"
+        },
+        {
+            "key": "teacher_username",
+            "value": ""
+        },
+        {
+            "key": "teacher_password",
+            "value": ""
+        },
+        {
+            "key": "teacher_token",
+            "value": ""
+        },
+        {
+            "key": "teacher_user_id",
+            "value": ""
+        },
+        {
+            "key": "student_row_id",
+            "value": ""
+        },
+        {
+            "key": "from",
+            "value": "2026-01-01"
+        },
+        {
+            "key": "to",
+            "value": "2026-12-31"
+        },
+        {
+            "key": "month",
+            "value": "2026-10"
+        },
+        {
+            "key": "register_date",
+            "value": "2026-10-15"
+        },
+        {
+            "key": "section_id",
+            "value": ""
+        },
+        {
+            "key": "register_student_id",
+            "value": ""
+        }
+    ],
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "let body = {};",
+                    "try { body = pm.response.json(); } catch (e) {}",
+                    "if (body.data && body.data.flow_token) { pm.collectionVariables.set('flow_token', body.data.flow_token); }"
+                ]
+            }
+        }
+    ],
+    "item": [
+        {
+            "name": "0. Log in",
+            "item": [
+                {
+                    "name": "Student",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"mobile_number\": \"{{student_mobile}}\",\n    \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"mobile_number\": \"{{student_mobile}}\",\n    \"otp\": \"{{otp}}\",\n    \"role\": \"student\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Check Student ID and class",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/check",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"schl_id\": {{schl_id}},\n    \"class_code\": {{student_class_code}},\n    \"student_id\": \"{{student_registration_id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify student password",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/verify-password",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"password\": \"{{student_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Or: send contact OTP (password not known)",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/send-contact-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Or: verify contact OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/student/verify-contact-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"otp\": \"{{otp}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN (saves student_token)",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const body = pm.response.json();",
+                                            "if (body.data && body.data.token !== undefined) { pm.collectionVariables.set('student_token', String(body.data.token)); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"pin\": \"{{pin}}\",\n    \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Profile (saves student_row_id)",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const body = pm.response.json();",
+                                            "if (body.data && body.data.placement && body.data.placement.homework_student_id) { pm.collectionVariables.set('student_row_id', String(body.data.placement && body.data.placement.homework_student_id)); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{student_token}}"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/me"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Teacher",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/send-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"mobile_number\": \"{{teacher_mobile}}\",\n    \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/verify-otp",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"mobile_number\": \"{{teacher_mobile}}\",\n    \"otp\": \"{{otp}}\",\n    \"role\": \"teacher\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Verify teacher login",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/teacher/verify",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"schl_id\": {{schl_id}},\n    \"username\": \"{{teacher_username}}\",\n    \"password\": \"{{teacher_password}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set PIN (saves teacher_token, teacher_user_id)",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const body = pm.response.json();",
+                                            "if (body.data && body.data.token !== undefined) { pm.collectionVariables.set('teacher_token', String(body.data.token)); }",
+                                            "if (body.data && body.data.user && body.data.user.id !== undefined) { pm.collectionVariables.set('teacher_user_id', String(body.data.user && body.data.user.id)); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": "{{base_url}}/auth/set-pin",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"flow_token\": \"{{flow_token}}\",\n    \"pin\": \"{{pin}}\",\n    \"pin_confirmation\": \"{{pin}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "1. Student",
+            "item": [
+                {
+                    "name": "10.1 Report for a duration",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_row_id}}/attendance/report?from={{from}}&to={{to}}"
+                    }
+                },
+                {
+                    "name": "10.2 One month",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_row_id}}/attendance?month={{month}}"
+                    }
+                },
+                {
+                    "name": "10.3 Session summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_row_id}}/attendance/summary"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2. Teacher",
+            "item": [
+                {
+                    "name": "10.5 Register for a date (saves section_id)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "if (body.data && body.data.section_id) { pm.collectionVariables.set('section_id', String(body.data.section_id)); }",
+                                    "if (body.data && body.data.students && body.data.students[0] && body.data.students[0].student_id) { pm.collectionVariables.set('register_student_id', String(body.data.students && body.data.students[0] && body.data.students[0].student_id)); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/teacher/attendance/register?date={{register_date}}"
+                    }
+                },
+                {
+                    "name": "10.6 Submit the register",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "register-{{section_id}}-{{register_date}}-{{$timestamp}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/teacher/attendance/register",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"section_id\": \"{{section_id}}\",\n  \"date\": \"{{register_date}}\",\n  \"marks\": [\n    { \"student_id\": \"{{register_student_id}}\", \"status\": \"present\" }\n  ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

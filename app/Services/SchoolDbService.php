@@ -52,6 +52,12 @@ class SchoolDbService
     }
 
     /**
+     * Writes to a school's database go through one connection per module, and each module writes
+     * only to its own tables: homework to hw_ tables, profile to app_stu_profile_change_request,
+     * results to exam_overall_result.remarks_note (the teacher's comment) only, notices to
+     * app_notice and app_notice_read, attendance to the day columns of attendance_info and
+     * app_attendance_register_log.
+     * Everything else stays on the read-only connection above.
      * Homework and quizzes are the only things this API writes to a school's database, and only
      * to hw_, qz_ and qb_ tables. Everything else stays on the read-only connection above.
      */
@@ -63,6 +69,36 @@ class SchoolDbService
         return DB::connection('tenant_homework');
     }
 
+    public function connectForProfile(string $dbName): Connection
+    {
+        config(['database.connections.tenant_profile.database' => $dbName]);
+        DB::purge('tenant_profile');
+
+        return DB::connection('tenant_profile');
+    }
+
+    public function connectForResult(string $dbName): Connection
+    {
+        config(['database.connections.tenant_result.database' => $dbName]);
+        DB::purge('tenant_result');
+
+        return DB::connection('tenant_result');
+    }
+
+    public function connectForNotice(string $dbName): Connection
+    {
+        config(['database.connections.tenant_notice.database' => $dbName]);
+        DB::purge('tenant_notice');
+
+        return DB::connection('tenant_notice');
+    }
+
+    public function connectForAttendance(string $dbName): Connection
+    {
+        config(['database.connections.tenant_attendance.database' => $dbName]);
+        DB::purge('tenant_attendance');
+
+        return DB::connection('tenant_attendance');
     public function connectForQuiz(string $dbName): Connection
     {
         return $this->connectForHomework($dbName);

@@ -1,9 +1,19 @@
 <?php
 
+use App\Http\Controllers\Attendance\StudentAttendanceController;
+use App\Http\Controllers\Attendance\TeacherAttendanceController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\GuardianAuthController;
 use App\Http\Controllers\Auth\StudentAuthController;
 use App\Http\Controllers\Auth\TeacherAuthController;
+use App\Http\Controllers\ClassRoutine\StudentRoutineController;
+use App\Http\Controllers\ClassRoutine\TeacherRoutineController;
+use App\Http\Controllers\HwAssignment\StudentHomeworkController;
+use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
+use App\Http\Controllers\Notice\NoticeAudienceController;
+use App\Http\Controllers\Notice\NoticeController;
+use App\Http\Controllers\ResultReport\StudentResultController;
+use App\Http\Controllers\ResultReport\TeacherResultController;
 use App\Http\Controllers\Guardian\GuardianChildController;
 use App\Http\Controllers\Guardian\GuardianHomeworkController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
@@ -11,6 +21,8 @@ use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
 use App\Http\Controllers\Quiz\StudentQuizController;
 use App\Http\Controllers\Quiz\TeacherQuizController;
 use App\Http\Controllers\SchoolController;
+use App\Http\Controllers\StudentProfile\StudentProfileController;
+use App\Http\Controllers\StudentProfile\TeacherClassListController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('throttle:auth')->group(function () {
@@ -129,4 +141,68 @@ Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:teacher']
         Route::get('homework/{homeworkId}/submissions/{studentId}', 'work');
         Route::post('homework/{homeworkId}/submissions/{studentId}/assessment', 'assess')->middleware('activity:assess_homework');
         Route::post('homework/{homeworkId}/submissions/{studentId}/resubmission', 'requestResubmission')->middleware('activity:request_resubmission');
+    });
+
+// Module 3 - Class Routine
+Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:student'])
+    ->get('students/{studentId}/routine', [StudentRoutineController::class, 'show'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:routine', 'jwt.app', 'tenant', 'routine:teacher'])
+    ->get('teachers/{teacherId}/routine', [TeacherRoutineController::class, 'show'])
+    ->whereNumber('teacherId');
+
+// Module 1 - Student Full Profile
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile'])
+    ->get('students/{studentId}/profile', [StudentProfileController::class, 'show'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:student', 'activity:request_profile_change'])
+    ->post('students/{studentId}/profile/change-requests', [StudentProfileController::class, 'changeRequest'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:profile', 'jwt.app', 'tenant', 'profile:teacher'])
+    ->get('teacher/my-class/students', [TeacherClassListController::class, 'index']);
+
+// Module 2 - Result Performance Report
+Route::middleware(['throttle:result', 'jwt.app', 'tenant', 'result'])
+    ->get('students/{studentId}/results', [StudentResultController::class, 'index'])
+    ->whereNumber('studentId');
+
+Route::middleware(['throttle:result', 'jwt.app', 'tenant', 'result:teacher'])
+    ->prefix('teacher/my-class/exams')
+    ->whereNumber(['examId', 'studentId'])
+    ->controller(TeacherResultController::class)
+    ->group(function () {
+        Route::get('/', 'exams');
+        Route::get('{examId}', 'exam');
+        Route::put('{examId}/students/{studentId}/comment', 'comment')->middleware('activity:comment_result');
+    });
+
+// Module 5 - Notice System
+Route::middleware(['throttle:notice', 'jwt.app', 'tenant'])
+    ->prefix('notices')
+    ->group(function () {
+        Route::get('/', [NoticeController::class, 'index'])->middleware('notice');
+        Route::post('/', [NoticeController::class, 'store'])->middleware(['notice:teacher', 'activity:publish_notice']);
+        Route::get('audience-options', [NoticeAudienceController::class, 'index'])->middleware('notice:teacher');
+        Route::post('{noticeId}/read', [NoticeController::class, 'read'])->middleware('notice')->where('noticeId', '(web-)?[0-9]+');
+    });
+
+// Module 10 - Students' Live Attendance Status (10.4, the PDF, is built by the app team)
+Route::middleware(['throttle:attendance', 'jwt.app', 'tenant', 'attendance:student'])
+    ->prefix('students/{studentId}/attendance')
+    ->whereNumber('studentId')
+    ->controller(StudentAttendanceController::class)
+    ->group(function () {
+        Route::get('/', 'month');
+        Route::get('report', 'report');
+        Route::get('summary', 'summary');
+    });
+
+Route::middleware(['throttle:attendance', 'jwt.app', 'tenant', 'attendance:teacher'])
+    ->controller(TeacherAttendanceController::class)
+    ->group(function () {
+        Route::get('teacher/attendance/register', 'show');
+        Route::post('teacher/attendance/register', 'store')->middleware('activity:submit_attendance');
     });

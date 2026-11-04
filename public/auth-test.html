@@ -151,6 +151,68 @@
             <button type="button" class="alt" id="old-token" hidden>Try old token</button>
             <button type="button" id="open-homework" hidden>Open homework</button>
             <p class="hint" id="homework-guest" hidden>Guest teachers have no homework. To use it, verify with a school from the list.</p>
+
+            <h3>Class routine</h3>
+            <label>Date <input id="routine-date" type="date"></label>
+            <button type="button" id="load-routine">GET routine</button>
+            <p class="hint">Uses your own id: the student's placement.homework_student_id, or the teacher's user id. The response is in the API log.</p>
+
+            <h3>Student profile</h3>
+            <label>Student id <input id="profile-student-id" inputmode="numeric" placeholder="Empty = your own (student)"></label>
+            <button type="button" id="load-profile">GET profile</button>
+            <button type="button" class="alt" id="load-class-list">GET my class list (teacher)</button>
+            <p class="hint">A student sees only their own profile. A teacher can open a student of their class: take a student_id from the class list. The response is in the API log.</p>
+
+            <h3>Ask for a profile correction (student)</h3>
+            <label>Field <input id="change-field" placeholder="e.g. Blood group"></label>
+            <label>Correct value <input id="change-value" placeholder="e.g. A+"></label>
+            <label>Note <input id="change-note" placeholder="Optional"></label>
+            <button type="button" id="send-change">POST correction request</button>
+            <p class="hint">Saved for the school to review; the profile does not change. Sending the same request again in a row reuses its Idempotency-Key, so it is stored once.</p>
+
+            <h3>Results</h3>
+            <button type="button" id="load-results">GET my results (student)</button>
+            <button type="button" class="alt" id="load-class-exams">GET my class exams (teacher)</button>
+            <label>Exam id <input id="result-exam-id" inputmode="numeric" placeholder="An id from my class exams"></label>
+            <button type="button" class="alt" id="load-result-sheet">GET result sheet (teacher)</button>
+            <label>Student id <input id="result-student-id" inputmode="numeric" placeholder="A student_id from the result sheet"></label>
+            <label>Comment <input id="result-comment" placeholder="Printed on the transcript"></label>
+            <button type="button" class="alt" id="save-result-comment">PUT comment (teacher)</button>
+            <p class="hint">Teacher: GET my class exams, put an exam id above, GET result sheet, then put a student_id from it and a comment. The response is in the API log.</p>
+
+            <h3>Notices</h3>
+            <button type="button" id="load-notices">GET my notices</button>
+            <label>Notice id <input id="notice-id" placeholder="e.g. 12 or web-22, from my notices"></label>
+            <button type="button" class="alt" id="read-notice">POST mark as read</button>
+            <button type="button" class="alt" id="load-notice-options">GET audience options (teacher)</button>
+            <label>Category
+                <select id="notice-category"></select>
+            </label>
+            <label>Priority
+                <select id="notice-priority"><option>normal</option><option>urgent</option><option>high</option><option>low</option></select>
+            </label>
+            <label>Title <input id="notice-title"></label>
+            <label>Body <textarea id="notice-body" rows="3"></textarea></label>
+            <label>Roles (comma list) <input id="notice-roles" value="students,guardians"></label>
+            <label>Class ids (comma list, from audience options) <input id="notice-classes"></label>
+            <label>Section ids (optional) <input id="notice-sections"></label>
+            <label>Group ids (optional) <input id="notice-groups"></label>
+            <label>Files (optional) <input id="notice-files" type="file" multiple></label>
+            <button type="button" class="alt" id="publish-notice">POST publish notice (teacher)</button>
+            <p class="hint">A teacher can only send to the classes in their audience options. No push notification is sent yet. The response is in the API log.</p>
+
+            <h3>Attendance</h3>
+            <label>From <input id="att-from" type="date"></label>
+            <label>To <input id="att-to" type="date"></label>
+            <button type="button" id="load-att-report">GET report (student)</button>
+            <label>Month <input id="att-month" type="month"></label>
+            <button type="button" class="alt" id="load-att-month">GET month (student)</button>
+            <button type="button" class="alt" id="load-att-summary">GET summary (student)</button>
+            <label>Register date <input id="att-register-date" type="date"></label>
+            <button type="button" class="alt" id="load-att-register">GET register (teacher)</button>
+            <label>Marks: student_id=status, comma list (present, absent, fugitive) <input id="att-marks" placeholder="e.g. 3837=present,3838=absent"></label>
+            <button type="button" class="alt" id="submit-att-register">POST register (teacher)</button>
+            <p class="hint">Empty From / To = the session start to today. The register uses its date and the section_id from GET register. The response is in the API log.</p>
             <button type="button" id="open-guardian" hidden>Open guardian home</button>
         </div>
 
@@ -707,6 +769,173 @@ $('logout').addEventListener('click', async () => {
 
 // After a logout this request should fail, because the saved auth_token has been cleared.
 $('old-token').addEventListener('click', () => call('GET', '/auth/me', null, oldToken));
+
+// Class routine (module 3). The id in the path is always the caller's own.
+$('routine-date').value = new Date().toISOString().slice(0, 10);
+
+$('load-routine').addEventListener('click', async () => {
+    const date = $('routine-date').value;
+    if (!date) return notify('Choose a date', false);
+
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return;
+
+    if (me.role === 'teacher') {
+        return call('GET', '/teachers/' + me.id + '/routine?date=' + date, null, token);
+    }
+
+    if (!me.placement) return notify('This student has no current class, so there is no routine id', false);
+
+    await call('GET', '/students/' + me.placement.homework_student_id + '/routine?date=' + date, null, token);
+});
+
+// Student profile (module 1).
+$('load-profile').addEventListener('click', async () => {
+    let id = $('profile-student-id').value.trim();
+
+    if (!id) {
+        const me = await call('GET', '/auth/me', null, token);
+        if (!me) return;
+        if (me.role === 'teacher') return notify('Enter a student_id from your class list', false);
+        if (!me.placement) return notify('This student has no current class, so there is no student id', false);
+        id = me.placement.homework_student_id;
+    }
+
+    await call('GET', '/students/' + encodeURIComponent(id) + '/profile', null, token);
+});
+
+$('load-class-list').addEventListener('click', () => call('GET', '/teacher/my-class/students', null, token));
+
+// A new key only when the request changes, so pressing the button twice shows the idempotency rule.
+let changeKey = null;
+let changeKeyFor = null;
+
+$('send-change').addEventListener('click', async () => {
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return;
+    if (!me.placement) return notify('Only a student with a current class can ask for a correction', false);
+
+    const body = { field: $('change-field').value.trim(), requested_value: $('change-value').value.trim() };
+    if ($('change-note').value.trim()) body.note = $('change-note').value.trim();
+
+    const signature = JSON.stringify(body);
+    if (signature !== changeKeyFor) {
+        changeKey = 'profile-change-' + me.placement.homework_student_id + '-' + Date.now();
+        changeKeyFor = signature;
+    }
+
+    await call('POST', '/students/' + me.placement.homework_student_id + '/profile/change-requests', body, token, { 'Idempotency-Key': changeKey });
+});
+
+// Results (module 2).
+$('load-results').addEventListener('click', async () => {
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return;
+    if (!me.placement) return notify('Only a student with a current class has a results id', false);
+
+    await call('GET', '/students/' + me.placement.homework_student_id + '/results', null, token);
+});
+
+$('load-class-exams').addEventListener('click', () => call('GET', '/teacher/my-class/exams', null, token));
+
+$('load-result-sheet').addEventListener('click', () => {
+    const exam = $('result-exam-id').value.trim();
+    if (!exam) return notify('Enter an exam id from "my class exams"', false);
+
+    return call('GET', '/teacher/my-class/exams/' + encodeURIComponent(exam), null, token);
+});
+
+$('save-result-comment').addEventListener('click', () => {
+    const exam = $('result-exam-id').value.trim();
+    const student = $('result-student-id').value.trim();
+    if (!exam || !student) return notify('Enter the exam id and a student_id from the result sheet', false);
+
+    return call('PUT', '/teacher/my-class/exams/' + encodeURIComponent(exam) + '/students/' + encodeURIComponent(student) + '/comment', { comment: $('result-comment').value }, token);
+});
+
+// Notices (module 5).
+['general', 'academic', 'examination', 'class_routine', 'homework', 'fee_payment', 'holiday', 'transport', 'library',
+    'result_achievement', 'parent_notice', 'teacher_notice', 'event_program', 'emergency', 'admission',
+    'routine_change', 'circular', 'other'].forEach((value) => {
+    const option = document.createElement('option');
+    option.textContent = value;
+    $('notice-category').appendChild(option);
+});
+
+$('load-notices').addEventListener('click', () => call('GET', '/notices', null, token));
+$('load-notice-options').addEventListener('click', () => call('GET', '/notices/audience-options', null, token));
+
+$('read-notice').addEventListener('click', () => {
+    const id = $('notice-id').value.trim();
+    if (!id) return notify('Enter a notice id from "my notices"', false);
+
+    return call('POST', '/notices/' + encodeURIComponent(id) + '/read', {}, token);
+});
+
+$('publish-notice').addEventListener('click', () => {
+    const form = new FormData();
+    form.append('category', $('notice-category').value);
+    form.append('priority', $('notice-priority').value);
+    form.append('title', $('notice-title').value);
+    form.append('body', $('notice-body').value);
+    form.append('audience_roles', $('notice-roles').value);
+    form.append('audience_classes', $('notice-classes').value);
+    form.append('audience_sections', $('notice-sections').value);
+    form.append('audience_groups', $('notice-groups').value);
+    [...$('notice-files').files].forEach((file) => form.append('files[]', file));
+
+    return call('POST', '/notices', form, token, { 'Idempotency-Key': 'notice-' + Date.now() });
+});
+
+// Attendance (module 10).
+$('att-month').value = new Date().toISOString().slice(0, 7);
+$('att-register-date').value = new Date().toISOString().slice(0, 10);
+let registerSectionId = null;
+
+async function ownStudentId() {
+    const me = await call('GET', '/auth/me', null, token);
+    if (!me) return null;
+    if (!me.placement) {
+        notify('This student has no current class, so there is no attendance id', false);
+        return null;
+    }
+    return me.placement.homework_student_id;
+}
+
+$('load-att-report').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (!id) return;
+    const query = new URLSearchParams();
+    if ($('att-from').value) query.set('from', $('att-from').value);
+    if ($('att-to').value) query.set('to', $('att-to').value);
+    await call('GET', '/students/' + id + '/attendance/report' + (query.toString() ? '?' + query : ''), null, token);
+});
+
+$('load-att-month').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (id) await call('GET', '/students/' + id + '/attendance?month=' + $('att-month').value, null, token);
+});
+
+$('load-att-summary').addEventListener('click', async () => {
+    const id = await ownStudentId();
+    if (id) await call('GET', '/students/' + id + '/attendance/summary', null, token);
+});
+
+$('load-att-register').addEventListener('click', async () => {
+    const data = await call('GET', '/teacher/attendance/register?date=' + $('att-register-date').value, null, token);
+    if (data) registerSectionId = data.section_id;
+});
+
+$('submit-att-register').addEventListener('click', () => {
+    if (!registerSectionId) return notify('Run GET register first, for the section_id', false);
+
+    const marks = $('att-marks').value.split(',').map((pair) => pair.trim()).filter(Boolean).map((pair) => {
+        const [student_id, status] = pair.split('=').map((part) => part.trim());
+        return { student_id, status };
+    });
+
+    return call('POST', '/teacher/attendance/register', { section_id: registerSectionId, date: $('att-register-date').value, marks }, token, { 'Idempotency-Key': 'register-' + Date.now() });
+});
 
 // Teacher homework panel
 

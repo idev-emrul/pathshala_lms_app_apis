@@ -35,6 +35,26 @@ return [
             'database' => null,
         ],
 
+        // The same school, used only for writing profile correction requests. See SchoolDbService.
+        'tenant_profile' => $mysql + [
+            'database' => null,
+        ],
+
+        // The same school, used only for writing the teacher's result comment. See SchoolDbService.
+        'tenant_result' => $mysql + [
+            'database' => null,
+        ],
+
+        // The same school, used only for writing app notices and read marks. See SchoolDbService.
+        'tenant_notice' => $mysql + [
+            'database' => null,
+        ],
+
+        // The same school, used only for writing the class attendance register. See SchoolDbService.
+        'tenant_attendance' => $mysql + [
+            'database' => null,
+        ],
+
     ],
 
     // db_school_api_web already has an unrelated `migrations` table, so this

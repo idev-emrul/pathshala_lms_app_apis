@@ -1,0 +1,738 @@
+{
+    "info": {
+        "name": "Pathshala App API - Leave",
+        "description": "Leave applications (Module 11) and early leave (Module 12). Log in first with the Authentication collection and paste each role's token into the token variables here. Set student_id to placement.homework_student_id from /auth/me. Every response is { status, message, data }, and errors also have error { code, message, details }. These requests run against real data: approving a leave writes Leave into the school's attendance_info, unless the school has switched that off.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "let body = {};",
+                    "try { body = pm.response.json(); } catch (e) {}",
+                    "const data = body.data || {};",
+                    "if (data.application_no) { pm.collectionVariables.set('application_id', data.id); }",
+                    "if (data.number) { pm.collectionVariables.set('request_id', data.id); }",
+                    "if (data.release_code) { pm.collectionVariables.set('release_code', data.release_code); }"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000/api/v1"
+        },
+        {
+            "key": "student_id",
+            "value": ""
+        },
+        {
+            "key": "child_id",
+            "value": ""
+        },
+        {
+            "key": "application_id",
+            "value": ""
+        },
+        {
+            "key": "request_id",
+            "value": ""
+        },
+        {
+            "key": "release_code",
+            "value": ""
+        },
+        {
+            "key": "from",
+            "value": ""
+        },
+        {
+            "key": "to",
+            "value": ""
+        },
+        {
+            "key": "leave_at",
+            "value": ""
+        },
+        {
+            "key": "year",
+            "value": "2026"
+        },
+        {
+            "key": "month",
+            "value": "11"
+        },
+        {
+            "key": "date",
+            "value": ""
+        },
+        {
+            "key": "student_token",
+            "value": ""
+        },
+        {
+            "key": "guardian_token",
+            "value": ""
+        },
+        {
+            "key": "teacher_token",
+            "value": ""
+        },
+        {
+            "key": "admin_token",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Leave: student or guardian",
+            "item": [
+                {
+                    "name": "11.1 Summary, types and applications",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/leave?year={{year}}"
+                    }
+                },
+                {
+                    "name": "11.3 Apply",
+                    "description": "Set from and to first, as YYYY-MM-DD. Saves application_id. Use guardian_token to apply as a guardian.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/leave",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "type_id",
+                                    "value": "sick",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "{{from}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "to",
+                                    "value": "{{to}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "reason",
+                                    "value": "জ্বর",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "attachment",
+                                    "type": "file",
+                                    "src": [],
+                                    "disabled": true,
+                                    "description": "Optional. One file, PDF, JPG or PNG. The limit comes from the school settings."
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "11.2 One application with history",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/leave/{{application_id}}"
+                    }
+                },
+                {
+                    "name": "Withdraw a pending application",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/leave/{{application_id}}/withdraw",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Leave: review",
+            "item": [
+                {
+                    "name": "11.4 Review queue and counts",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/leave/review?status=pending"
+                    }
+                },
+                {
+                    "name": "11.5 Approve",
+                    "description": "A class teacher, or an admin. Writes Leave into attendance, only over empty or absent days, and not on the weekly off day.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/leave/review/{{application_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"approve\",\n    \"remarks\": null\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "11.5 Reject",
+                    "description": "Remarks are required.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/leave/review/{{application_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"reject\",\n    \"remarks\": \"কারণ লিখুন\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Summary by class and leave type (admin)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/admin/leave/summary?year={{year}}&month={{month}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Early leave: student or guardian",
+            "item": [
+                {
+                    "name": "12.1 Context, guardians, today and history",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/early-leave?year={{year}}"
+                    }
+                },
+                {
+                    "name": "12.3 Create",
+                    "description": "Set leave_at first, in UTC, such as 2026-11-04T07:00:00Z. Saves request_id. pickup is an id from 12.1, or free text such as চাচা (রফিক). A guardian's own request skips the parent step.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/early-leave",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "leave_at",
+                                    "value": "{{leave_at}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "reason",
+                                    "value": "medical",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "guardian_id",
+                                    "value": "father",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "pickup",
+                                    "value": "g_father",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "details",
+                                    "value": "",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "attachment",
+                                    "type": "file",
+                                    "src": [],
+                                    "disabled": true,
+                                    "description": "Optional. One file, PDF, JPG or PNG. The limit comes from the school settings."
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "12.2 One request",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{student_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/early-leave/{{request_id}}"
+                    }
+                },
+                {
+                    "name": "12.2 One request as the guardian, with the release code",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guardian_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/students/{{student_id}}/early-leave/{{request_id}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Early leave: approvals",
+            "description": "The server picks the step from the caller and the request status.",
+            "item": [
+                {
+                    "name": "12.4 Queue (guardian)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guardian_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/queue"
+                    }
+                },
+                {
+                    "name": "12.5 Parent approves",
+                    "description": "child_id is required for a guardian. It comes from the queue or /guardian/children.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guardian_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"approve\",\n    \"child_id\": \"{{child_id}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "12.4 Queue (class teacher)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/queue"
+                    }
+                },
+                {
+                    "name": "12.5 Class teacher approves",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"approve\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "12.4 Queue (admin)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/queue"
+                    }
+                },
+                {
+                    "name": "12.5 Admin approves",
+                    "description": "The final step, or the teacher step as a fallback.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"approve\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "12.5 Reject",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/decision",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"reject\",\n    \"remarks\": \"কারণ\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Early leave: gate and reports",
+            "item": [
+                {
+                    "name": "Gate list",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/gate/early-leave"
+                    }
+                },
+                {
+                    "name": "Release",
+                    "description": "Only an approved request, on its leave day. Any teacher or admin can do this. Run 12.2 as the guardian first to save the code.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/release",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"{{release_code}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Release to a person not on the list",
+                    "description": "Only if the school allows it.",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{teacher_token}}"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}",
+                                "description": "Optional. The same key returns the first answer."
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/{{request_id}}/release",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"{{release_code}}\",\n    \"handed_to\": \"রফিক\",\n    \"handed_to_relation\": \"চাচা\",\n    \"override_reason\": \"কারণ\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "12.6 Daily register (admin)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/early-leave/register?date={{date}}"
+                    }
+                },
+                {
+                    "name": "Summary by class (admin)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/admin/early-leave/summary?year={{year}}&month={{month}}"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -97,6 +97,20 @@ class StudentLoginFlowTest extends TestCase
             ->assertJsonPath('data.user.is_verified', true)
             ->assertJsonPath('data.user.student_name', $student->name);
 
+        $placement = app(SchoolDbService::class)->currentPlacement($this->tenant(), (string) $student->id);
+
+        $login->assertJsonPath('data.role', 'student')
+            ->assertJsonPath('data.name', $student->name)
+            ->assertJsonPath('data.school_id', (string) self::SCHOOL_ID)
+            ->assertJsonPath('data.school_name', 'Test School')
+            ->assertJsonPath('data.student_id', (string) $placement->current_status_info_id)
+            ->assertJsonPath('data.access_token', $login->json('data.token'))
+            ->assertJsonPath('data.permissions', config('pathshala.permissions.student'))
+            ->assertJsonPath('data.feature_flags', config('pathshala.feature_flags'))
+            ->assertJsonMissingPath('data.refresh_token')
+            ->assertJsonMissingPath('data.linked_students');
+        $this->assertStringContainsString((string) $placement->class_name, $login->json('data.detail'));
+
         $user = AppUser::where('mobile_number', self::MOBILE)->first();
         $this->assertSame((string) $student->id, $user->verified_id);
         $this->assertSame('password', $user->verified_by);
@@ -106,6 +120,9 @@ class StudentLoginFlowTest extends TestCase
 
         $this->withToken($token)->getJson('/api/v1/auth/me')->assertOk()
             ->assertJsonPath('data.student_name', $student->name)
+            ->assertJsonPath('data.student_id', (string) $placement->current_status_info_id)
+            ->assertJsonPath('data.user_id', (string) $user->id)
+            ->assertJsonMissingPath('data.access_token')
             ->assertJsonPath('data.mobile_number', Phone::mask(self::MOBILE))
             ->assertJsonStructure(['data' => ['placement' => ['session_name', 'class_name', 'section_name', 'roll_number']]]);
 
@@ -138,7 +155,8 @@ class StudentLoginFlowTest extends TestCase
         $this->mobileFlow();
 
         $this->postJson('/api/v1/auth/pin-login', ['mobile_number' => self::MOBILE, 'role' => 'student', 'pin' => '1234'])
-            ->assertStatus(401)
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed')
             ->assertJsonPath('message', 'Incorrect mobile number or PIN');
     }
 
@@ -189,6 +207,7 @@ class StudentLoginFlowTest extends TestCase
             ->assertExactJson([
                 'status' => false,
                 'message' => 'The information you entered is not valid',
+                'error' => ['code' => 'not_found', 'message' => 'The information you entered is not valid', 'can_continue_as_guest' => true],
                 'data' => ['can_continue_as_guest' => true],
             ]);
     }
@@ -200,6 +219,7 @@ class StudentLoginFlowTest extends TestCase
             ->assertExactJson([
                 'status' => false,
                 'message' => 'The information you entered is not valid',
+                'error' => ['code' => 'not_found', 'message' => 'The information you entered is not valid', 'can_continue_as_guest' => true],
                 'data' => ['can_continue_as_guest' => true],
             ]);
     }
@@ -252,6 +272,7 @@ class StudentLoginFlowTest extends TestCase
             ->assertExactJson([
                 'status' => false,
                 'message' => 'No contact number found',
+                'error' => ['code' => 'validation_failed', 'message' => 'No contact number found', 'can_continue_as_guest' => true],
                 'data' => ['can_continue_as_guest' => true],
             ]);
     }
@@ -332,7 +353,7 @@ class StudentLoginFlowTest extends TestCase
             ->assertJsonStructure(['data' => ['token']]);
 
         foreach (range(1, 5) as $ignored) {
-            $this->postJson('/api/v1/auth/pin-login', $credentials + ['pin' => '0000'])->assertStatus(401);
+            $this->postJson('/api/v1/auth/pin-login', $credentials + ['pin' => '0000'])->assertStatus(422);
         }
 
         $this->postJson('/api/v1/auth/pin-login', $credentials + ['pin' => '1234'])->assertStatus(429);
@@ -405,8 +426,10 @@ class StudentLoginFlowTest extends TestCase
         $this->verifiedLogin();
         $attempts = AppLoginAttempt::count();
 
-        $this->postJson('/api/v1/auth/send-otp', $send)->assertStatus(409)
+        $this->postJson('/api/v1/auth/send-otp', $send)->assertStatus(422)
             ->assertJsonPath('message', 'This number already has an account. Log in with your PIN.')
+            ->assertJsonPath('error.code', 'validation_failed')
+            ->assertJsonPath('error.next', 'pin_login')
             ->assertJsonPath('data.next', 'pin_login');
         $this->assertSame($attempts, AppLoginAttempt::count());
 
@@ -462,7 +485,11 @@ class StudentLoginFlowTest extends TestCase
             ->assertJsonStructure(['data' => [['class_code', 'class_name', 'class_name_bn']]]);
 
         $this->getJson('/api/v1/schools/9/classes')->assertStatus(404);
-        $this->getJson('/api/v1/no-such-route')->assertStatus(404)->assertExactJson(['status' => false, 'message' => 'Not found']);
+        $this->getJson('/api/v1/no-such-route')->assertStatus(404)->assertExactJson([
+            'status' => false,
+            'message' => 'Not found',
+            'error' => ['code' => 'not_found', 'message' => 'Not found'],
+        ]);
     }
 
     public function test_school_database_is_read_only(): void

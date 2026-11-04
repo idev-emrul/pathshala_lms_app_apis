@@ -8,6 +8,7 @@ use App\Models\AppUser;
 use App\Models\AppUserLog;
 use App\Support\Phone;
 use Illuminate\Database\Connection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -20,6 +21,7 @@ class StudentAuthService
         private SchoolDbService $schools,
         private OtpService $otp,
         private TokenService $tokens,
+        private GuardianChildService $guardianChildren,
     ) {}
 
     /**
@@ -165,7 +167,7 @@ class StudentAuthService
                 throw new ApiException('This number is already linked to another account. Log in with your PIN or use a different number.', 409);
             }
         } else {
-            $verifiedId = $flow['is_verified'] ? (string) ($flow['teacher_user_id'] ?? $flow['student_id']) : null;
+            $verifiedId = $flow['is_verified'] ? (string) ($flow['account_user_id'] ?? $flow['teacher_user_id'] ?? $flow['student_id']) : null;
             $this->ensureNumberIsAvailable($flow['mobile_number'], $flow['role'], $flow['schl_id'], $verifiedId);
         }
 
@@ -175,7 +177,7 @@ class StudentAuthService
 
         $token = DB::connection('master')->transaction(function () use ($user, $flow, $pin, $isPinReset, $dbName, $child) {
             $user->fill([
-                'verified_id' => $flow['is_verified'] ? ($flow['teacher_user_id'] ?? $flow['student_id']) : null,
+                'verified_id' => $flow['is_verified'] ? ($flow['account_user_id'] ?? $flow['teacher_user_id'] ?? $flow['student_id']) : null,
                 'is_verified' => $flow['is_verified'],
                 'verified_by' => $flow['verified_by'],
                 'schl_id' => $flow['schl_id'],
@@ -202,7 +204,7 @@ class StudentAuthService
             return $token;
         });
 
-        return $this->loginResult($user, $token, $flow['teacher_name'] ?? $flow['student_name']);
+        return $this->loginResult($user, $token, $flow['account_name'] ?? $flow['teacher_name'] ?? $flow['student_name'] ?? null, $dbName);
     }
 
     public function pinLogin(string $mobileNumber, string $role, string $pin): array
@@ -216,7 +218,8 @@ class StudentAuthService
         if (! $user?->pin || ! Hash::check($pin, $user->pin)) {
             RateLimiter::hit($limitKey, config('pathshala.login_limit.seconds'));
 
-            throw new ApiException('Incorrect mobile number or PIN', 401);
+            // Not 401, because the app signs the user out on a 401.
+            throw new ApiException('Incorrect mobile number or PIN');
         }
 
         RateLimiter::clear($limitKey);
@@ -228,7 +231,7 @@ class StudentAuthService
         $user->update(['auth_token' => $token, 'last_login_at' => now()]);
         AppUserLog::record($user, AppUserLog::LOGIN);
 
-        return $this->loginResult($user, $token, $this->personName($user, $tenant ? $this->schools->connectToSchool($tenant) : null));
+        return $this->loginResult($user, $token, $this->personName($user, $tenant ? $this->schools->connectToSchool($tenant) : null), $tenant?->db_name);
     }
 
     /**
@@ -239,7 +242,7 @@ class StudentAuthService
         $user = AppUser::where('mobile_number', $mobileNumber)->where('role', $role)->first();
 
         if ($user?->pin) {
-            throw new ApiException('This number already has an account. Log in with your PIN.', 409, ['next' => 'pin_login']);
+            throw new ApiException('This number already has an account. Log in with your PIN.', 422, ['next' => 'pin_login']);
         }
     }
 
@@ -290,7 +293,10 @@ class StudentAuthService
      */
     public function profile(AppUser $user, ?Connection $tenant): array
     {
-        $profile = $this->userData($user, $this->personName($user, $tenant)) + [
+        $name = $this->personName($user, $tenant);
+        [$placement, $subjects] = $this->schoolDetails($user, $tenant);
+
+        $profile = $this->session($user, $name, $placement, $subjects) + $this->userData($user, $name) + [
             'mobile_number' => Phone::mask($user->mobile_number),
             'language_mode' => $user->language_mode,
         ];
@@ -305,12 +311,12 @@ class StudentAuthService
             return $profile + ['teacher_code' => $teacher?->teacher_code];
         }
 
-        $placement = ($user->is_verified && $tenant)
-            ? $this->schools->currentPlacement($tenant, $user->verified_id)
-            : null;
+        if (in_array($user->role, [AppUser::ROLE_ADMIN, AppUser::ROLE_STAFF], true)) {
+            return $profile;
+        }
 
         return $profile + [
-            'student_id' => $user->entered_student_id,
+            'entered_student_id' => $user->entered_student_id,
             'placement' => $placement ? [
                 'homework_student_id' => (string) $placement->current_status_info_id,
                 'session_name' => $placement->session_name,
@@ -372,9 +378,11 @@ class StudentAuthService
             return null;
         }
 
-        return $user->role === AppUser::ROLE_TEACHER
-            ? $this->schools->findTeacher($tenant, $user->verified_id)?->teacher_name
-            : $this->schools->findStudent($tenant, $user->verified_id)?->student_name;
+        return match ($user->role) {
+            AppUser::ROLE_TEACHER => $this->schools->findTeacher($tenant, $user->verified_id)?->teacher_name,
+            AppUser::ROLE_ADMIN, AppUser::ROLE_STAFF => $this->schools->findAdminStaffName($tenant, $user->verified_id),
+            default => $this->schools->findStudent($tenant, $user->verified_id)?->student_name,
+        };
     }
 
     public function ensureNotLimited(string $key): void
@@ -388,20 +396,129 @@ class StudentAuthService
         }
     }
 
-    private function loginResult(AppUser $user, string $token, ?string $name): array
+    private function loginResult(AppUser $user, string $token, ?string $name, ?string $dbName): array
     {
-        return [
+        [$placement, $subjects] = $this->loginSchoolDetails($user, $dbName);
+
+        return $this->session($user, $name, $placement, $subjects) + [
+            'access_token' => $token,
             'token' => $token,
             'token_type' => 'bearer',
             'user' => $this->userData($user, $name),
         ];
     }
 
+    /**
+     * The login is already saved by now, so a school that is down must not fail it.
+     */
+    private function loginSchoolDetails(AppUser $user, ?string $dbName): array
+    {
+        if (! $dbName) {
+            return [null, []];
+        }
+
+        try {
+            return $this->schoolDetails($user, $this->schools->connect($dbName));
+        } catch (ApiException|QueryException $e) {
+            report($e);
+
+            return [null, []];
+        }
+    }
+
+    /**
+     * @return array{0: ?object, 1: string[]} A student's current class, and a teacher's subjects.
+     */
+    private function schoolDetails(AppUser $user, ?Connection $tenant): array
+    {
+        if (! $user->is_verified || ! $tenant) {
+            return [null, []];
+        }
+
+        if ($user->role === AppUser::ROLE_STUDENT) {
+            return [$this->schools->currentPlacement($tenant, $user->verified_id), []];
+        }
+
+        if ($user->role === AppUser::ROLE_TEACHER) {
+            $teacherCode = (int) $this->schools->findTeacher($tenant, $user->verified_id)?->teacher_code;
+
+            return [null, $teacherCode ? $this->schools->teacherSubjectNames($tenant, $teacherCode) : []];
+        }
+
+        return [null, []];
+    }
+
+    /**
+     * The session object the app builds its screens from. student_id is the id in /students/{id}
+     * paths, and linked_students holds the same id for each of a guardian's children.
+     */
+    private function session(AppUser $user, ?string $name, ?object $placement, array $subjects): array
+    {
+        $isGuardian = $user->role === AppUser::ROLE_GUARDIAN;
+        $children = $isGuardian ? $this->guardianChildren->children($user) : [];
+
+        $session = [
+            'user_id' => (string) $user->id,
+            'role' => AppUser::appRoleName($user->role),
+            'school_id' => $user->schl_id ? (string) $user->schl_id : null,
+            'school_name' => $user->school_name,
+            'name' => $name,
+            'detail' => match ($user->role) {
+                AppUser::ROLE_GUARDIAN => $this->childrenDetail($children),
+                AppUser::ROLE_TEACHER => implode(', ', $subjects) ?: null,
+                default => $this->placementDetail($placement),
+            },
+            'permissions' => ($user->is_verified || $isGuardian) ? config("pathshala.permissions.{$user->role}", []) : [],
+            'feature_flags' => config('pathshala.feature_flags'),
+        ];
+
+        if ($isGuardian) {
+            return $session + ['linked_students' => collect($children)->pluck('homework_student_id')->filter()->values()->all()];
+        }
+
+        if ($user->role === AppUser::ROLE_STUDENT) {
+            return $session + ['student_id' => $placement ? (string) $placement->current_status_info_id : null];
+        }
+
+        return $session;
+    }
+
+    /**
+     * Like the contract's "২ জন সন্তান: রহিম আহমেদ, সাদিয়া আহমেদ". A child who cannot be read has no name to show.
+     */
+    private function childrenDetail(array $children): ?string
+    {
+        if (! $children) {
+            return null;
+        }
+
+        $count = $this->banglaDigits(count($children)).' জন সন্তান';
+        $names = collect($children)->pluck('student_name')->filter()->implode(', ');
+
+        return $names ? "{$count}: {$names}" : $count;
+    }
+
+    private function banglaDigits(int|string $number): string
+    {
+        return strtr((string) $number, ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯']);
+    }
+
+    private function placementDetail(?object $placement): ?string
+    {
+        if (! $placement) {
+            return null;
+        }
+
+        $roll = $placement->roll_number ? 'রোল '.$this->banglaDigits($placement->roll_number) : null;
+
+        return collect([$placement->class_name, $placement->section_name, $roll])->filter()->implode(' · ');
+    }
+
     private function userData(AppUser $user, ?string $name): array
     {
         $data = [
             'id' => $user->id,
-            'role' => $user->role,
+            'role' => AppUser::appRoleName($user->role),
             'is_verified' => $user->is_verified,
             'school_name' => $user->school_name,
             'class_name' => $user->class_name,
@@ -411,6 +528,7 @@ class StudentAuthService
         return match ($user->role) {
             AppUser::ROLE_GUARDIAN => $data,
             AppUser::ROLE_TEACHER => $data + ['teacher_name' => $name],
+            AppUser::ROLE_ADMIN, AppUser::ROLE_STAFF => $data + ['name' => $name],
             default => $data + ['student_name' => $name],
         };
     }

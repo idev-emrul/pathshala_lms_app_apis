@@ -237,6 +237,12 @@ class GuardianLoginFlowTest extends TestCase
         $login = $this->setPin($ready)->assertOk()
             ->assertJsonPath('data.user.role', 'guardian')
             ->assertJsonPath('data.user.is_verified', true)
+            ->assertJsonPath('data.role', 'guardian')
+            ->assertJsonPath('data.school_id', null)
+            ->assertJsonPath('data.detail', '১ জন সন্তান: Rahim')
+            ->assertJsonPath('data.linked_students', ['1'])
+            ->assertJsonPath('data.permissions', config('pathshala.permissions.guardian'))
+            ->assertJsonMissingPath('data.student_id')
             ->assertJsonMissingPath('data.user.student_name')
             ->assertJsonMissingPath('data.user.teacher_name');
 
@@ -253,7 +259,13 @@ class GuardianLoginFlowTest extends TestCase
 
         $this->withToken($token)->getJson('/api/v1/auth/me')->assertOk()
             ->assertJsonPath('data.children_count', 1)
+            ->assertJsonPath('data.linked_students', ['1'])
             ->assertJsonMissingPath('data.placement');
+
+        // Not their child, and the school header is not compared for a guardian.
+        $this->withToken($token)->withHeader('X-School-Id', (string) self::SCHOOL_B)->getJson('/api/v1/students/999/quizzes')
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'not_linked');
 
         $this->postJson('/api/v1/auth/pin-login', ['mobile_number' => self::MOBILE, 'role' => 'guardian', 'pin' => '1234'])->assertOk();
 
@@ -483,8 +495,8 @@ class GuardianLoginFlowTest extends TestCase
         $this->loggedInGuardian();
 
         $this->postJson('/api/v1/auth/send-otp', ['mobile_number' => self::MOBILE, 'role' => 'guardian'])
-            ->assertStatus(409)
-            ->assertJsonPath('data.next', 'pin_login');
+            ->assertStatus(422)
+            ->assertJsonPath('error.next', 'pin_login');
     }
 
     public function test_forgot_pin_needs_the_mobile_otp_and_the_otp_on_the_childs_contact_number(): void

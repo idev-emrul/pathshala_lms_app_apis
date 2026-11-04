@@ -33,7 +33,7 @@ class OtpRulesTest extends TestCase
         $this->send()->assertOk()->assertExactJson([
             'status' => true,
             'message' => 'OTP sent to 017*****001',
-            'data' => ['expires_in_seconds' => 1800, 'resend_left' => 1],
+            'data' => ['expires_in_seconds' => 1800, 'resend_after_seconds' => 1800, 'resend_left' => 1],
         ]);
 
         $this->assertNotSame('123456', $this->attempt()->otp);
@@ -77,11 +77,13 @@ class OtpRulesTest extends TestCase
             ->assertJsonPath('message', 'Incorrect OTP')
             ->assertJsonPath('data.attempts_left', 1);
 
-        $this->verify('000000')->assertStatus(422)->assertJsonPath('message', self::BLOCKED_MESSAGE);
+        $this->verify('000000')->assertStatus(429)
+            ->assertJsonPath('message', self::BLOCKED_MESSAGE)
+            ->assertJsonPath('error.code', 'rate_limited');
         $this->assertNotNull($this->attempt()->locked_at);
 
         // Even the right OTP and a resend are refused during the lock.
-        $this->verify('123456')->assertStatus(422)->assertJsonPath('message', self::BLOCKED_MESSAGE);
+        $this->verify('123456')->assertStatus(429)->assertJsonPath('message', self::BLOCKED_MESSAGE);
         $this->send()->assertStatus(429)->assertJsonPath('message', self::LIMIT_MESSAGE);
 
         $this->travel(59)->minutes();
@@ -101,7 +103,7 @@ class OtpRulesTest extends TestCase
 
         // 2nd OTP expired 1 minute ago: locked.
         $this->travel(31)->minutes();
-        $this->verify('123456')->assertStatus(422)->assertJsonPath('message', self::BLOCKED_MESSAGE);
+        $this->verify('123456')->assertStatus(429)->assertJsonPath('message', self::BLOCKED_MESSAGE);
         $this->send()->assertStatus(429)->assertJsonPath('message', self::LIMIT_MESSAGE);
         $this->assertNotNull($this->attempt()->locked_at);
 

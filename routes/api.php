@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\AdminStaffAuthController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\GuardianAuthController;
 use App\Http\Controllers\Auth\StudentAuthController;
@@ -8,6 +9,8 @@ use App\Http\Controllers\Guardian\GuardianChildController;
 use App\Http\Controllers\Guardian\GuardianHomeworkController;
 use App\Http\Controllers\HwAssignment\StudentHomeworkController;
 use App\Http\Controllers\HwAssignment\TeacherHomeworkController;
+use App\Http\Controllers\Leave\EarlyLeaveController;
+use App\Http\Controllers\Leave\LeaveController;
 use App\Http\Controllers\Quiz\StudentQuizController;
 use App\Http\Controllers\Quiz\TeacherQuizController;
 use App\Http\Controllers\SchoolController;
@@ -32,6 +35,8 @@ Route::middleware('throttle:auth')->group(function () {
     Route::post('auth/guardian/check', [GuardianAuthController::class, 'check']);
     Route::post('auth/guardian/send-child-otp', [GuardianAuthController::class, 'sendChildOtp']);
     Route::post('auth/guardian/verify-child-otp', [GuardianAuthController::class, 'verifyChildOtp']);
+
+    Route::post('auth/{role}/verify', [AdminStaffAuthController::class, 'verify'])->whereIn('role', ['admin', 'staff', 'schoolAdmin', 'accounts']);
 
     Route::post('auth/set-pin', [AuthController::class, 'setPin']);
     Route::post('auth/pin-login', [AuthController::class, 'pinLogin']);
@@ -100,6 +105,59 @@ Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:teacher']
         Route::get('{quizId}/roster', 'roster');
         Route::put('{quizId}/marks', 'saveMarks')->middleware('activity:save_quiz_marks');
         Route::post('{quizId}/release', 'release')->middleware('activity:release_quiz');
+    });
+
+// Module 11, leave applications. Paths take 3 or the contract's lv-3.
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:student'])
+    ->prefix('students/{studentId}/leave')
+    ->whereNumber('studentId')
+    ->controller(LeaveController::class)
+    ->group(function () {
+        Route::get('/', 'index')->middleware('cache.headers:private;etag');
+        Route::post('/', 'store')->middleware('activity:apply_leave');
+        Route::get('{applicationId}', 'show')->where('applicationId', '(lv-)?[0-9]+');
+        Route::post('{applicationId}/withdraw', 'withdraw')->where('applicationId', '(lv-)?[0-9]+')->middleware('activity:withdraw_leave');
+    });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:staff'])
+    ->prefix('leave/review')
+    ->controller(LeaveController::class)
+    ->group(function () {
+        Route::get('/', 'review');
+        Route::post('{applicationId}/decision', 'decide')->where('applicationId', '(lv-)?[0-9]+')->middleware('activity:decide_leave');
+    });
+
+// Module 12, early leave. Paths take 3 or the contract's el-3.
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:student'])
+    ->prefix('students/{studentId}/early-leave')
+    ->whereNumber('studentId')
+    ->controller(EarlyLeaveController::class)
+    ->group(function () {
+        Route::get('/', 'index')->middleware('cache.headers:private;etag');
+        Route::post('/', 'store')->middleware('activity:create_early_leave');
+        Route::get('{requestId}', 'show')->where('requestId', '(el-)?[0-9]+');
+    });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:approver'])
+    ->prefix('early-leave')
+    ->controller(EarlyLeaveController::class)
+    ->group(function () {
+        Route::get('queue', 'queue');
+        Route::post('{requestId}/decision', 'decide')->where('requestId', '(el-)?[0-9]+')->middleware('activity:decide_early_leave');
+    });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:staff'])
+    ->controller(EarlyLeaveController::class)
+    ->group(function () {
+        Route::get('gate/early-leave', 'gate');
+        Route::post('early-leave/{requestId}/release', 'release')->where('requestId', '(el-)?[0-9]+')->middleware('activity:release_early_leave');
+    });
+
+Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'leave:admin'])
+    ->group(function () {
+        Route::get('admin/leave/summary', [LeaveController::class, 'summary']);
+        Route::get('admin/early-leave/summary', [EarlyLeaveController::class, 'summary']);
+        Route::get('early-leave/register', [EarlyLeaveController::class, 'register']);
     });
 
 Route::middleware(['throttle:homework', 'jwt.app', 'tenant', 'homework:student'])

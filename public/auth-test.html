@@ -52,6 +52,7 @@
                 <select id="role" required>
                     <option value="student">Student</option>
                     <option value="teacher">Teacher</option>
+                    <option value="guardian">Guardian</option>
                 </select>
             </label>
             <label>Mobile number <input id="mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
@@ -107,6 +108,24 @@
             <button type="button" class="alt js-guest">Can't verify? Continue as guest</button>
         </form>
 
+        <form id="step-guardian-child" class="step" hidden>
+            <h2>Add child</h2>
+            <p class="hint" id="guardian-reset-note" hidden>Forgot PIN: enter a child already on this account.</p>
+            <label>School <select id="guardian-school" required></select></label>
+            <label>Class <select id="guardian-class" required></select></label>
+            <label>Student ID <input id="guardian-student-id" inputmode="numeric" required></label>
+            <button type="submit">Check child</button>
+            <button type="button" class="alt" id="guardian-add-back" hidden>Back</button>
+        </form>
+
+        <form id="step-guardian-otp" class="step" hidden>
+            <h2>Child's contact number OTP</h2>
+            <p class="hint">Sent to <strong id="guardian-masked"></strong>. Test OTP: 123456</p>
+            <label>OTP <input id="guardian-otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="guardian-resend">Resend OTP</button>
+        </form>
+
         <form id="step-pin" class="step" hidden>
             <h2>5. Set PIN</h2>
             <label>PIN (4 digits) <input id="pin" type="password" inputmode="numeric" maxlength="4" required></label>
@@ -132,6 +151,20 @@
             <button type="button" class="alt" id="old-token" hidden>Try old token</button>
             <button type="button" id="open-homework" hidden>Open homework</button>
             <p class="hint" id="homework-guest" hidden>Guest teachers have no homework. To use it, verify with a school from the list.</p>
+            <button type="button" id="open-guardian" hidden>Open guardian home</button>
+        </div>
+
+        <div id="step-guardian" class="step" hidden>
+            <h2>Guardian home</h2>
+            <label id="guardian-switch-wrap" hidden>Child <select id="guardian-switch"></select></label>
+            <p class="hint" id="guardian-empty" hidden>No children yet.</p>
+            <pre id="guardian-info"></pre>
+            <p></p>
+            <button type="button" id="guardian-homework">Homework</button>
+            <button type="button" class="alt" id="guardian-summary">Homework summary</button>
+            <button type="button" id="guardian-add">Add child</button>
+            <button type="button" class="alt" id="guardian-remove">Remove this child</button>
+            <button type="button" class="alt" id="guardian-home">Back to profile</button>
         </div>
 
         <div id="step-hw" class="step" hidden>
@@ -363,7 +396,12 @@ function loggedIn(data) {
     $('old-token').hidden = true;
     $('open-homework').hidden = !(data.user.role === 'teacher' && data.user.is_verified);
     $('homework-guest').hidden = !(data.user.role === 'teacher' && !data.user.is_verified);
-    show('step-home');
+    $('open-guardian').hidden = data.user.role !== 'guardian';
+    if (data.user.role === 'guardian') {
+        openGuardianHome();
+    } else {
+        show('step-home');
+    }
 }
 
 function sendMobileOtp() {
@@ -406,8 +444,120 @@ $('step-otp').addEventListener('submit', async (e) => {
     const data = await call('POST', '/auth/verify-otp', { mobile_number: $('mobile').value.trim(), otp: $('otp').value.trim(), role: $('role').value });
     if (data) {
         flowToken = data.flow_token;
-        await ($('role').value === 'teacher' ? openTeacherStep() : openSchoolStep());
+        const openStep = { teacher: openTeacherStep, guardian: () => openGuardianChildStep(false) }[$('role').value] || openSchoolStep;
+        await openStep();
     }
+});
+
+// Guardian. The same steps are used before login, for a forgotten PIN and to add a child after login.
+
+let addingChild = false;
+
+function guardianPath(afterLogin, beforeLogin) {
+    return addingChild ? '/guardian/children/' + afterLogin : '/auth/guardian/' + beforeLogin;
+}
+
+async function loadGuardianClasses() {
+    $('guardian-class').replaceChildren();
+    if (!$('guardian-school').value) return;
+
+    const classes = await call('GET', '/schools/' + encodeURIComponent($('guardian-school').value) + '/classes');
+    if (classes) fillSelect($('guardian-class'), classes, 'class_code', (c) => c.class_name);
+}
+
+async function openGuardianChildStep(afterLogin) {
+    addingChild = afterLogin;
+    $('guardian-add-back').hidden = !afterLogin;
+    $('guardian-reset-note').hidden = !resettingPin || afterLogin;
+    $('guardian-student-id').value = '';
+    show('step-guardian-child');
+
+    const schools = await call('GET', '/schools');
+    if (!schools) return;
+
+    fillSelect($('guardian-school'), schools, 'schl_id', (s) => s.schl_name);
+    await loadGuardianClasses();
+}
+
+function sendGuardianOtp() {
+    return call('POST', guardianPath('send-otp', 'send-child-otp'), { flow_token: flowToken }, addingChild ? token : null);
+}
+
+$('guardian-school').addEventListener('change', loadGuardianClasses);
+$('guardian-resend').addEventListener('click', sendGuardianOtp);
+$('guardian-add').addEventListener('click', () => { clearNotice(); openGuardianChildStep(true); });
+$('guardian-add-back').addEventListener('click', () => { clearNotice(); openGuardianHome(); });
+$('guardian-home').addEventListener('click', () => { clearNotice(); show('step-home'); });
+$('open-guardian').addEventListener('click', () => { clearNotice(); openGuardianHome(); });
+
+$('step-guardian-child').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+        schl_id: Number($('guardian-school').value),
+        class_code: Number($('guardian-class').value),
+        student_id: $('guardian-student-id').value.trim(),
+    };
+    if (!addingChild) body.flow_token = flowToken;
+
+    const data = await call('POST', guardianPath('check', 'check'), body, addingChild ? token : null);
+    if (!data) return;
+
+    flowToken = data.flow_token;
+    $('guardian-masked').textContent = data.masked_number;
+    $('guardian-otp').value = '';
+    await sendGuardianOtp();
+    show('step-guardian-otp');
+});
+
+$('step-guardian-otp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', guardianPath('verify-otp', 'verify-child-otp'), { flow_token: flowToken, otp: $('guardian-otp').value.trim() }, addingChild ? token : null);
+    if (!data) return;
+
+    if (addingChild) {
+        await openGuardianHome();
+    } else {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+async function showGuardianHomework(suffix) {
+    const data = await call('GET', '/guardian/children/' + $('guardian-switch').value + '/homework' + suffix, null, token);
+    if (data) $('guardian-info').textContent = JSON.stringify(data, null, 2);
+}
+
+$('guardian-homework').addEventListener('click', () => showGuardianHomework(''));
+$('guardian-summary').addEventListener('click', () => showGuardianHomework('/summary'));
+
+function showGuardianChild(child) {
+    $('guardian-info').textContent = child ? JSON.stringify(child, null, 2) : '';
+    $('guardian-remove').hidden = !child;
+    $('guardian-homework').hidden = !child;
+    $('guardian-summary').hidden = !child;
+    $('guardian-empty').hidden = Boolean(child);
+}
+
+async function openGuardianHome() {
+    show('step-guardian');
+    const data = await call('GET', '/guardian/dashboard', null, token);
+    if (!data) return;
+
+    const label = (c) => (c.student_name || 'ID ' + c.student_id) + ' | ' + (c.school_name || 'Unknown school');
+    fillSelect($('guardian-switch'), data.children, 'id', label);
+    $('guardian-switch-wrap').hidden = data.children.length < 2;
+    if (data.child) $('guardian-switch').value = data.child.id;
+    showGuardianChild(data.child);
+}
+
+$('guardian-switch').addEventListener('change', async () => {
+    const child = await call('GET', '/guardian/children/' + $('guardian-switch').value + '/dashboard', null, token);
+    if (child) showGuardianChild(child);
+});
+
+$('guardian-remove').addEventListener('click', async () => {
+    if (!confirm('Remove this child from your account?')) return;
+    if (await call('DELETE', '/guardian/children/' + $('guardian-switch').value, null, token)) await openGuardianHome();
 });
 
 async function openTeacherStep() {
@@ -923,6 +1073,7 @@ $('restart').addEventListener('click', () => {
     token = null;
     oldToken = null;
     resettingPin = false;
+    addingChild = false;
     teachingOptions = null;
     editing = null;
     snapshot = null;

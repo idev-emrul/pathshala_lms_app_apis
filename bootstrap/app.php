@@ -2,6 +2,7 @@
 
 use App\Exceptions\ApiException;
 use App\Http\Middleware\AuthenticateAppToken;
+use App\Http\Middleware\AuthorizeGuardian;
 use App\Http\Middleware\AuthorizeHomework;
 use App\Http\Middleware\ConnectTenant;
 use App\Http\Middleware\RecordActivity;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'jwt.app' => AuthenticateAppToken::class,
             'tenant' => ConnectTenant::class,
             'homework' => AuthorizeHomework::class,
+            'guardian' => AuthorizeGuardian::class,
             'activity' => RecordActivity::class,
         ]);
     })

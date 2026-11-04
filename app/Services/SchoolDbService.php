@@ -52,8 +52,8 @@ class SchoolDbService
     }
 
     /**
-     * Homework is the only thing this API writes to a school's database, and only to hw_ tables.
-     * Everything else stays on the read-only connection above.
+     * Homework and quizzes are the only things this API writes to a school's database, and only
+     * to hw_, qz_ and qb_ tables. Everything else stays on the read-only connection above.
      */
     public function connectForHomework(string $dbName): Connection
     {
@@ -61,6 +61,11 @@ class SchoolDbService
         DB::purge('tenant_homework');
 
         return DB::connection('tenant_homework');
+    }
+
+    public function connectForQuiz(string $dbName): Connection
+    {
+        return $this->connectForHomework($dbName);
     }
 
     public function classes(School $school): Collection

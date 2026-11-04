@@ -14,19 +14,20 @@ class OtpService
 {
     public const PURPOSE_LOGIN = 'mobile_login';
     public const PURPOSE_CONTACT = 'student_contact';
+    public const PURPOSE_GUARDIAN_CHILD = 'guardian_child';
 
     public function __construct(private OtpDriver $driver) {}
 
     /**
      * @return array{expires_in_seconds: int, resend_left: int}
      */
-    public function send(string $mobileNumber, string $purpose): array
+    public function send(string $mobileNumber, string $purpose, ?string $role = null): array
     {
         $otp = $this->generate();
 
         // Refusals are thrown after the transaction, so anything it saved is kept.
         try {
-            $result = DB::connection('master')->transaction(fn () => $this->store($mobileNumber, $purpose, $otp));
+            $result = DB::connection('master')->transaction(fn () => $this->store($mobileNumber, $purpose, $otp, $role));
         } catch (UniqueConstraintViolationException) {
             throw new ApiException('Please wait before requesting a new OTP', 429);
         }
@@ -53,13 +54,16 @@ class OtpService
 
     /**
      * Returns normally only when the OTP is correct. The record is then deleted.
+     *
+     * @return string|null The role the OTP was sent for.
      */
-    public function verify(string $mobileNumber, string $purpose, string $otp): void
+    public function verify(string $mobileNumber, string $purpose, string $otp, ?string $role = null): ?string
     {
-        $result = DB::connection('master')->transaction(fn () => $this->check($mobileNumber, $purpose, $otp));
+        $result = DB::connection('master')->transaction(fn () => $this->check($mobileNumber, $purpose, $otp, $role));
 
         match ($result['outcome']) {
             'ok' => null,
+            'role' => throw new ApiException('This OTP was sent for a different role. Please start again.'),
             'expired' => throw new ApiException('OTP expired. Please request a new OTP.'),
             'wrong' => throw new ApiException('Incorrect OTP', 422, ['attempts_left' => $result['attempts_left']]),
             'locked' => throw new ApiException(
@@ -68,6 +72,8 @@ class OtpService
                 ['retry_after_seconds' => $result['retry']],
             ),
         };
+
+        return $result['role'];
     }
 
     /**
@@ -82,7 +88,7 @@ class OtpService
             ->delete();
     }
 
-    private function store(string $mobileNumber, string $purpose, string $otp): array
+    private function store(string $mobileNumber, string $purpose, string $otp, ?string $role): array
     {
         $attempt = $this->current($mobileNumber, $purpose);
 
@@ -91,11 +97,15 @@ class OtpService
         }
 
         if ($attempt && now()->lt($attempt->expires_at)) {
+            // The user went back and picked another role, so the OTP already sent now belongs to it.
+            $attempt->update(['role' => $role]);
+
             return ['outcome' => 'wait', 'retry' => (int) ceil(now()->diffInSeconds($attempt->expires_at))];
         }
 
         $attempt ??= new AppLoginAttempt(['mobile_number' => $mobileNumber, 'purpose' => $purpose]);
         $attempt->fill([
+            'role' => $role,
             'otp' => Hash::make($otp),
             'wrong_attempts' => 0,
             'send_count' => $attempt->send_count + 1,
@@ -105,7 +115,7 @@ class OtpService
         return ['outcome' => 'sent', 'send_count' => $attempt->send_count];
     }
 
-    private function check(string $mobileNumber, string $purpose, string $otp): array
+    private function check(string $mobileNumber, string $purpose, string $otp, ?string $role): array
     {
         $attempt = $this->current($mobileNumber, $purpose);
 
@@ -121,10 +131,14 @@ class OtpService
             return ['outcome' => 'expired'];
         }
 
+        if ($role && $attempt->role && $attempt->role !== $role) {
+            return ['outcome' => 'role'];
+        }
+
         if (Hash::check($otp, $attempt->otp)) {
             $attempt->delete();
 
-            return ['outcome' => 'ok'];
+            return ['outcome' => 'ok', 'role' => $attempt->role];
         }
 
         $attempt->wrong_attempts++;

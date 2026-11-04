@@ -16,6 +16,7 @@ class TokenService
 {
     public const STEP_MOBILE_VERIFIED = 'mobile_verified';
     public const STEP_STUDENT_FOUND = 'student_found';
+    public const STEP_GUARDIAN_CHILD_FOUND = 'guardian_child_found';
     public const STEP_READY = 'ready';
 
     private const ALGORITHM = 'HS256';

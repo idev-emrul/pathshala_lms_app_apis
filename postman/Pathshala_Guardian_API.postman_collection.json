@@ -1,0 +1,223 @@
+{
+  "info": {
+    "name": "Pathshala App API - Guardian",
+    "description": "Guardian login and children. Run '1. First login' from the top: each request saves flow_token for the next, and Set PIN saves guardian_token. For a number that already has a PIN, use '2. Forgot PIN'. A child's OTP goes to the contact number in the school's records, or to the login number if the child has no valid one. Every response is { status, message, data }. While OTP_FIXED is set, every OTP is 123456. Set schl_id, class_code and student_id to a real student with a contact number. Run '4. Add child' with the second_* variables to get a second child.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let body = {};",
+          "try { body = pm.response.json(); } catch (e) {}",
+          "if (body.data && body.data.flow_token) { pm.collectionVariables.set('flow_token', body.data.flow_token); }",
+          "if (body.data && body.data.token) { pm.collectionVariables.set('guardian_token', body.data.token); }",
+          "if (body.data && body.data.child && body.data.child.id) { pm.collectionVariables.set('child_id', body.data.child.id); }"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api/v1" },
+    { "key": "mobile", "value": "01700000003" },
+    { "key": "otp", "value": "123456" },
+    { "key": "pin", "value": "1234" },
+    { "key": "schl_id", "value": "8" },
+    { "key": "class_code", "value": "6" },
+    { "key": "student_id", "value": "105002" },
+    { "key": "second_schl_id", "value": "8" },
+    { "key": "second_class_code", "value": "" },
+    { "key": "second_student_id", "value": "" },
+    { "key": "flow_token", "value": "" },
+    { "key": "guardian_token", "value": "" },
+    { "key": "child_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. First login",
+      "item": [
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/send-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile}}\",\n  \"role\": \"guardian\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/verify-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"guardian\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Check child (school, class, Student ID)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/guardian/check",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Send OTP to the child's contact number",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/guardian/send-child-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Verify the child's contact OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/guardian/verify-child-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"otp\": \"{{otp}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Set PIN (saves guardian_token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/set-pin",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Forgot PIN",
+      "description": "Send OTP with reset_pin, then the same steps as first login from Verify OTP. The child must already be on the account.",
+      "item": [
+        {
+          "name": "Send OTP (reset_pin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/send-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile}}\",\n  \"role\": \"guardian\",\n  \"reset_pin\": true\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. After login",
+      "item": [
+        {
+          "name": "PIN login (saves guardian_token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/pin-login",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile}}\",\n  \"role\": \"guardian\",\n  \"pin\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/auth/me"
+          }
+        },
+        {
+          "name": "Dashboard: first child and the list (saves child_id)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/dashboard"
+          }
+        },
+        {
+          "name": "Children",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children"
+          }
+        },
+        {
+          "name": "Switch child",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/{{child_id}}/dashboard"
+          }
+        },
+        {
+          "name": "Child's homework",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/{{child_id}}/homework"
+          }
+        },
+        {
+          "name": "Child's homework summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/{{child_id}}/homework/summary"
+          }
+        },
+        {
+          "name": "Remove child",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/{{child_id}}"
+          }
+        },
+        {
+          "name": "Log out",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Add child",
+      "item": [
+        {
+          "name": "Check child",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/check",
+            "body": { "mode": "raw", "raw": "{\n  \"schl_id\": {{second_schl_id}},\n  \"class_code\": {{second_class_code}},\n  \"student_id\": \"{{second_student_id}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Send OTP to the child's contact number",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/send-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Verify OTP and add the child",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/guardian/children/verify-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"otp\": \"{{otp}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    }
+  ]
+}

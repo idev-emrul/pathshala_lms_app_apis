@@ -1,0 +1,466 @@
+{
+  "info": {
+    "name": "Pathshala App API - Homework",
+    "description": "Homework for students and teachers. Run '0. Log in' first: it saves student_token, teacher_token and homework_student_id. Every response is { status, message, data }; errors also have errors for bad fields. Dates are UTC. While OTP_FIXED is set, the OTP is 123456. Run '4.9 Create homework' to save homework_id, then '4.3 Hand in' as the student, then 4.6, 4.7, 4.10 and 4.11 as the teacher. The class, section and subject variables must be ones the teacher teaches: get them from 4.8.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api/v1" },
+    { "key": "schl_id", "value": "8" },
+    { "key": "otp", "value": "123456" },
+    { "key": "pin", "value": "1234" },
+    { "key": "flow_token", "value": "" },
+    { "key": "student_mobile", "value": "01700000001" },
+    { "key": "student_class_code", "value": "6" },
+    { "key": "student_registration_id", "value": "105002" },
+    { "key": "student_password", "value": "" },
+    { "key": "student_token", "value": "" },
+    { "key": "homework_student_id", "value": "" },
+    { "key": "teacher_mobile", "value": "01700000002" },
+    { "key": "teacher_username", "value": "" },
+    { "key": "teacher_password", "value": "" },
+    { "key": "teacher_token", "value": "" },
+    { "key": "class_id", "value": "" },
+    { "key": "section_id", "value": "" },
+    { "key": "subject_id", "value": "" },
+    { "key": "homework_id", "value": "" },
+    { "key": "due_at", "value": "2027-01-15T04:00:00Z" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let body = {};",
+          "try { body = pm.response.json(); } catch (e) {}",
+          "if (body.data && body.data.flow_token) { pm.collectionVariables.set('flow_token', body.data.flow_token); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Log in",
+      "item": [
+        {
+          "name": "Student",
+          "item": [
+            {
+              "name": "Send OTP",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/send-otp",
+                "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"role\": \"student\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Verify OTP",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/verify-otp",
+                "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{student_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"student\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Check Student ID and class",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/student/check",
+                "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{student_class_code}},\n  \"student_id\": \"{{student_registration_id}}\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Verify student password",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/student/verify-password",
+                "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"password\": \"{{student_password}}\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Set PIN (saves student_token)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data && body.data.token) { pm.collectionVariables.set('student_token', body.data.token); }"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/set-pin",
+                "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Profile (saves homework_student_id)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data && body.data.placement) { pm.collectionVariables.set('homework_student_id', body.data.placement.homework_student_id); }"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+                "url": "{{base_url}}/auth/me"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teacher",
+          "item": [
+            {
+              "name": "Send OTP",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/send-otp",
+                "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"role\": \"teacher\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Verify OTP",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/verify-otp",
+                "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{teacher_mobile}}\",\n  \"otp\": \"{{otp}}\",\n  \"role\": \"teacher\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Verify teacher login",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/teacher/verify",
+                "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"username\": \"{{teacher_username}}\",\n  \"password\": \"{{teacher_password}}\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            },
+            {
+              "name": "Set PIN (saves teacher_token)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data && body.data.token) { pm.collectionVariables.set('teacher_token', body.data.token); }"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": "{{base_url}}/auth/set-pin",
+                "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Student",
+      "item": [
+        {
+          "name": "4.1 Homework list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{homework_student_id}}/homework"
+          }
+        },
+        {
+          "name": "4.2 Homework summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{homework_student_id}}/homework/summary"
+          }
+        },
+        {
+          "name": "4.3 Hand in (text and link)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{homework_student_id}}/homework/{{homework_id}}/submissions",
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"My answer\",\n  \"link\": \"https://example.com/my-work\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "4.3 Hand in (with files)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{homework_student_id}}/homework/{{homework_id}}/submissions",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "text", "value": "My answer", "type": "text" },
+                { "key": "files[]", "type": "file", "src": [] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Teacher: homework",
+      "item": [
+        {
+          "name": "4.8 Teaching options",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/teaching-options"
+          }
+        },
+        {
+          "name": "Filter options",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/filter-options"
+          }
+        },
+        {
+          "name": "4.4 Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/dashboard"
+          }
+        },
+        {
+          "name": "4.5 Homework list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/teacher/homework?status=published",
+              "host": ["{{base_url}}"],
+              "path": ["teacher", "homework"],
+              "query": [
+                { "key": "status", "value": "published" },
+                { "key": "session_id", "value": "", "disabled": true },
+                { "key": "class_id", "value": "{{class_id}}", "disabled": true },
+                { "key": "section_id", "value": "{{section_id}}", "disabled": true },
+                { "key": "subject_id", "value": "{{subject_id}}", "disabled": true },
+                { "key": "type", "value": "homework", "disabled": true },
+                { "key": "due_from", "value": "2026-11-01", "disabled": true },
+                { "key": "due_to", "value": "2026-12-31", "disabled": true },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.9 Create homework (saves homework_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.id) { pm.collectionVariables.set('homework_id', body.data.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{teacher_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": "{{base_url}}/teacher/homework",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"class_id\": \"{{class_id}}\",\n  \"section_id\": \"{{section_id}}\",\n  \"subject_id\": \"{{subject_id}}\",\n  \"type\": \"homework\",\n  \"title\": \"Algebra exercise 4.3\",\n  \"description\": \"Solve questions 1 to 12\",\n  \"chapter\": \"Chapter 4\",\n  \"due_at\": \"{{due_at}}\",\n  \"total_marks\": 10,\n  \"passing_marks\": 4,\n  \"allowed_formats\": [\"text\", \"image\", \"pdf\", \"link\"],\n  \"priority\": \"medium\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "4.9 Create homework (rubric)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.id) { pm.collectionVariables.set('homework_id', body.data.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{teacher_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": "{{base_url}}/teacher/homework",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"class_id\": \"{{class_id}}\",\n  \"section_id\": \"{{section_id}}\",\n  \"subject_id\": \"{{subject_id}}\",\n  \"type\": \"assignment\",\n  \"title\": \"Essay\",\n  \"description\": \"Write one page\",\n  \"due_at\": \"{{due_at}}\",\n  \"total_marks\": 10,\n  \"allowed_formats\": [\"text\", \"document\"],\n  \"rubric\": [\n    { \"name\": \"Accuracy\", \"max\": 6 },\n    { \"name\": \"Presentation\", \"max\": 4 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "4.9 Create homework (with files)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.id) { pm.collectionVariables.set('homework_id', body.data.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{teacher_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": "{{base_url}}/teacher/homework",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "class_id", "value": "{{class_id}}", "type": "text" },
+                { "key": "section_id", "value": "{{section_id}}", "type": "text" },
+                { "key": "subject_id", "value": "{{subject_id}}", "type": "text" },
+                { "key": "type", "value": "homework", "type": "text" },
+                { "key": "title", "value": "Worksheet", "type": "text" },
+                { "key": "description", "value": "Use the attached sheet", "type": "text" },
+                { "key": "due_at", "value": "{{due_at}}", "type": "text" },
+                { "key": "total_marks", "value": "10", "type": "text" },
+                { "key": "allowed_formats[]", "value": "text", "type": "text" },
+                { "key": "allowed_formats[]", "value": "pdf", "type": "text" },
+                { "key": "files[]", "type": "file", "src": [] }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.12 One homework",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}"
+          }
+        },
+        {
+          "name": "4.13 Edit homework",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}",
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Algebra exercise 4.4\",\n  \"due_at\": \"{{due_at}}\",\n  \"allowed_formats\": [\"text\", \"pdf\"]\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "4.13 Edit homework (add files)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files[]", "type": "file", "src": [] }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.14 Delete homework",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Teacher: checking work",
+      "item": [
+        {
+          "name": "4.6 Submissions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}/submissions"
+          }
+        },
+        {
+          "name": "4.7 One student's submission",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}/submissions/{{homework_student_id}}"
+          }
+        },
+        {
+          "name": "4.10 Assess (simple)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}/submissions/{{homework_student_id}}/assessment",
+            "body": { "mode": "raw", "raw": "{\n  \"obtained_marks\": 8,\n  \"tags\": [\"good\"],\n  \"feedback\": \"Well done.\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "4.10 Assess (rubric)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}/submissions/{{homework_student_id}}/assessment",
+            "body": { "mode": "raw", "raw": "{\n  \"criteria\": [\n    { \"name\": \"Accuracy\", \"obtained\": 4 },\n    { \"name\": \"Presentation\", \"obtained\": 2 }\n  ],\n  \"tags\": [\"good\"],\n  \"feedback\": \"Well done.\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "4.11 Request resubmission",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/homework/{{homework_id}}/submissions/{{homework_student_id}}/resubmission",
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Please fix questions 4 and 5.\",\n  \"new_due_at\": \"{{due_at}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    }
+  ]
+}

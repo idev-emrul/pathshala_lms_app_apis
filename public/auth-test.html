@@ -1,0 +1,1088 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>Auth Test</title>
+<style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font: 15px/1.45 system-ui, sans-serif; background: #f3f4f6; color: #1f2937; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    h2 { font-size: 16px; margin: 0 0 12px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 800px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .card { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; }
+    label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+    input, select, textarea { display: block; width: 100%; margin-top: 4px; padding: 8px; font: inherit; border: 1px solid #9ca3af; border-radius: 6px; background: #fff; color: inherit; }
+    input[type=checkbox] { display: inline; width: auto; margin: 0 4px 0 0; }
+    label.check { display: inline-block; margin: 0 12px 6px 0; font-weight: 400; }
+    .layout.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 420px); }
+    @media (max-width: 800px) { .layout.wide { grid-template-columns: minmax(0, 1fr); } }
+    .row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 12px; }
+    .item { padding: 10px 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+    .item p { margin: 2px 0 6px; font-size: 13px; color: #4b5563; }
+    .version { padding: 8px 10px; margin-bottom: 8px; background: #f3f4f6; border-radius: 6px; overflow-wrap: anywhere; }
+    .version p { margin: 2px 0; }
+    h3 { font-size: 14px; margin: 14px 0 8px; }
+    button { padding: 8px 12px; margin: 0 6px 6px 0; font: inherit; border: 1px solid #1d4ed8; border-radius: 6px; background: #1d4ed8; color: #fff; cursor: pointer; }
+    button.alt { background: #fff; color: #1d4ed8; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .hint { font-size: 13px; color: #4b5563; margin: 0 0 10px; }
+    #msg { display: none; padding: 8px 10px; margin-bottom: 12px; border-radius: 6px; overflow-wrap: anywhere; }
+    #msg.ok { display: block; background: #dcfce7; color: #166534; }
+    #msg.err { display: block; background: #fee2e2; color: #991b1b; }
+    #restart { margin: 8px 0 0; }
+    pre { margin: 0; font: 12px/1.4 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #log { max-height: 80vh; overflow-y: auto; }
+    .entry { padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+    [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1>Pathshala login test (testing only)</h1>
+<div class="layout">
+    <div class="card">
+        <div id="msg" role="status"></div>
+
+        <form id="step-mobile" class="step">
+            <h2>1. Role and mobile number</h2>
+            <label>Role
+                <select id="role" required>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="guardian">Guardian</option>
+                </select>
+            </label>
+            <label>Mobile number <input id="mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
+            <button type="submit">Send OTP</button>
+            <button type="button" class="alt" id="use-pin">Log in with PIN</button>
+        </form>
+
+        <form id="step-otp" class="step" hidden>
+            <h2>2. Verify OTP</h2>
+            <p class="hint">Test OTP: 123456. Two wrong entries lock this number for 1 hour.</p>
+            <label>OTP <input id="otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="resend-otp">Resend OTP</button>
+        </form>
+
+        <form id="step-school" class="step" hidden>
+            <h2>3. School, class and Student ID</h2>
+            <label>School <select id="school" required></select></label>
+            <label id="class-wrap">Class <select id="class"></select></label>
+            <label id="school-name-wrap" hidden>School name <input id="school-name"></label>
+            <label id="class-name-wrap" hidden>Class name <input id="class-name"></label>
+            <label>Student ID <input id="student-id" required></label>
+            <button type="submit" id="check-student">Check student</button>
+            <button type="button" class="alt js-guest">Continue as guest</button>
+        </form>
+
+        <form id="step-teacher" class="step" hidden>
+            <h2>3. School and teacher login</h2>
+            <label>School <select id="teacher-school" required></select></label>
+            <label id="teacher-school-name-wrap" hidden>School name <input id="teacher-school-name"></label>
+            <label id="teacher-username-wrap">Username <input id="teacher-username" autocomplete="off" required></label>
+            <label id="teacher-password-wrap">Password <input id="teacher-password" type="password" autocomplete="off" required></label>
+            <button type="submit" id="teacher-submit">Verify</button>
+        </form>
+
+        <form id="step-student" class="step" hidden>
+            <h2>4. Verify student</h2>
+            <p class="hint">Student: <strong id="student-name"></strong></p>
+            <label>Password <input id="password" type="password" autocomplete="off" required></label>
+            <button type="submit">Verify with password</button>
+            <button type="button" class="alt" id="send-contact">Send OTP to contact number</button>
+            <p class="hint" id="no-contact" hidden>This student has no contact number, so OTP is not available.</p>
+            <button type="button" class="alt js-guest">Can't verify? Continue as guest</button>
+        </form>
+
+        <form id="step-contact" class="step" hidden>
+            <h2>4. Student contact OTP</h2>
+            <p class="hint">Test OTP: 123456</p>
+            <label>OTP <input id="contact-otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="resend-contact">Resend OTP</button>
+            <button type="button" class="alt" id="use-password">Use password instead</button>
+            <button type="button" class="alt js-guest">Can't verify? Continue as guest</button>
+        </form>
+
+        <form id="step-guardian-child" class="step" hidden>
+            <h2>Add child</h2>
+            <p class="hint" id="guardian-reset-note" hidden>Forgot PIN: enter a child already on this account.</p>
+            <label>School <select id="guardian-school" required></select></label>
+            <label>Class <select id="guardian-class" required></select></label>
+            <label>Student ID <input id="guardian-student-id" inputmode="numeric" required></label>
+            <button type="submit">Check child</button>
+            <button type="button" class="alt" id="guardian-add-back" hidden>Back</button>
+        </form>
+
+        <form id="step-guardian-otp" class="step" hidden>
+            <h2>Child's contact number OTP</h2>
+            <p class="hint">Sent to <strong id="guardian-masked"></strong>. Test OTP: 123456</p>
+            <label>OTP <input id="guardian-otp" inputmode="numeric" maxlength="6" required></label>
+            <button type="submit">Verify</button>
+            <button type="button" class="alt" id="guardian-resend">Resend OTP</button>
+        </form>
+
+        <form id="step-pin" class="step" hidden>
+            <h2>5. Set PIN</h2>
+            <label>PIN (4 digits) <input id="pin" type="password" inputmode="numeric" maxlength="4" required></label>
+            <label>Confirm PIN <input id="pin-confirm" type="password" inputmode="numeric" maxlength="4" required></label>
+            <button type="submit">Save PIN and log in</button>
+        </form>
+
+        <form id="step-pin-login" class="step" hidden>
+            <h2>Log in with PIN</h2>
+            <p class="hint">Role: <strong id="login-role"></strong></p>
+            <label>Mobile number <input id="login-mobile" inputmode="numeric" placeholder="01XXXXXXXXX" required></label>
+            <label>PIN <input id="login-pin" type="password" inputmode="numeric" maxlength="4" required></label>
+            <button type="submit">Log in</button>
+            <button type="button" class="alt" id="forgot-pin">Forgot PIN</button>
+        </form>
+
+        <div id="step-home" class="step" hidden>
+            <h2>Logged in</h2>
+            <pre id="user-data"></pre>
+            <p></p>
+            <button type="button" id="load-me">GET /auth/me</button>
+            <button type="button" class="alt" id="logout">Log out</button>
+            <button type="button" class="alt" id="old-token" hidden>Try old token</button>
+            <button type="button" id="open-homework" hidden>Open homework</button>
+            <p class="hint" id="homework-guest" hidden>Guest teachers have no homework. To use it, verify with a school from the list.</p>
+            <button type="button" id="open-guardian" hidden>Open guardian home</button>
+        </div>
+
+        <div id="step-guardian" class="step" hidden>
+            <h2>Guardian home</h2>
+            <label id="guardian-switch-wrap" hidden>Child <select id="guardian-switch"></select></label>
+            <p class="hint" id="guardian-empty" hidden>No children yet.</p>
+            <pre id="guardian-info"></pre>
+            <p></p>
+            <button type="button" id="guardian-homework">Homework</button>
+            <button type="button" class="alt" id="guardian-summary">Homework summary</button>
+            <button type="button" id="guardian-add">Add child</button>
+            <button type="button" class="alt" id="guardian-remove">Remove this child</button>
+            <button type="button" class="alt" id="guardian-home">Back to profile</button>
+        </div>
+
+        <div id="step-hw" class="step" hidden>
+            <h2>Teacher homework</h2>
+            <button type="button" class="alt" id="hw-nav-dashboard">Dashboard</button>
+            <button type="button" class="alt" id="hw-nav-list">Homework list</button>
+            <button type="button" class="alt" id="hw-nav-create">Create homework</button>
+            <button type="button" class="alt" id="hw-nav-home">Back to profile</button>
+
+            <div id="hw-dashboard" hidden>
+                <h3>Totals</h3>
+                <pre id="hw-totals"></pre>
+                <h3>Recent</h3>
+                <div id="hw-recent"></div>
+            </div>
+
+            <div id="hw-list" hidden>
+                <h3>Homework list</h3>
+                <div class="row2">
+                    <label>Status
+                        <select id="hw-filter-status">
+                            <option value="">All</option>
+                            <option value="draft">Draft</option>
+                            <option value="published">Published</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </label>
+                    <label>Search <input id="hw-filter-search" maxlength="100"></label>
+                </div>
+                <button type="button" id="hw-filter-apply">Apply</button>
+                <div id="hw-items"></div>
+            </div>
+
+            <form id="hw-form" hidden>
+                <h3 id="hw-form-title">Create homework</h3>
+                <p class="hint" id="hw-form-note" hidden></p>
+                <div class="row2">
+                    <label>Class <select id="hw-class" required></select></label>
+                    <label>Section <select id="hw-section"></select></label>
+                    <label>Subject <select id="hw-subject" required></select></label>
+                    <label>Type <select id="hw-type" required></select></label>
+                </div>
+                <label>Title <input id="hw-title" maxlength="255" required></label>
+                <label>Description <textarea id="hw-description" rows="3" required></textarea></label>
+                <label>Chapter <input id="hw-chapter" maxlength="255"></label>
+                <div class="row2">
+                    <label>Due (this computer's time) <input id="hw-due" type="datetime-local" required></label>
+                    <label>Priority
+                        <select id="hw-priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </label>
+                    <label>Total marks <input id="hw-total" type="number" min="0" step="any" required></label>
+                    <label>Passing marks <input id="hw-passing" type="number" min="0" step="any"></label>
+                </div>
+                <p class="hint">Student can hand in as:</p>
+                <div id="hw-formats"></div>
+                <label>Rubric, one per line as Name: marks. Leave empty for one mark.
+                    <textarea id="hw-rubric" rows="3" placeholder="Accuracy: 6&#10;Presentation: 4"></textarea>
+                </label>
+                <label>Attach files <input id="hw-files" type="file" multiple></label>
+                <div id="hw-attachments"></div>
+                <label class="check" id="hw-publish-wrap" hidden><input id="hw-publish" type="checkbox">Publish this draft</label>
+                <div><button type="submit" id="hw-save">Save</button></div>
+            </form>
+
+            <div id="hw-subs" hidden>
+                <h3 id="hw-subs-title"></h3>
+                <div id="hw-sub-items"></div>
+            </div>
+
+            <div id="hw-work" hidden>
+                <button type="button" class="alt" id="hw-work-back">Back to submissions</button>
+                <h3 id="hw-work-title"></h3>
+                <div id="hw-versions"></div>
+                <form id="hw-assess">
+                    <h3>Assessment</h3>
+                    <div id="hw-marks"></div>
+                    <div id="hw-tags"></div>
+                    <label>Feedback <textarea id="hw-feedback" rows="2" maxlength="2000"></textarea></label>
+                    <button type="submit">Save assessment</button>
+                </form>
+                <form id="hw-resubmit">
+                    <h3>Request resubmission</h3>
+                    <label>Reason <textarea id="hw-reason" rows="2" maxlength="1000" required></textarea></label>
+                    <label>New due, optional (this computer's time) <input id="hw-new-due" type="datetime-local"></label>
+                    <button type="submit" class="alt">Request resubmission</button>
+                </form>
+            </div>
+        </div>
+
+        <button type="button" class="alt" id="restart">Start over</button>
+    </div>
+
+    <div class="card">
+        <h2>API log</h2>
+        <div id="log"><p class="hint">Requests and responses appear here. Passwords, PINs and tokens are hidden.</p></div>
+    </div>
+</div>
+
+<script>
+const API = '/api/v1';
+const HIDDEN_FIELDS = ['password', 'pin', 'pin_confirmation', 'token', 'flow_token'];
+const $ = (id) => document.getElementById(id);
+
+let flowToken = null;
+let token = null;
+let oldToken = null;
+let schoolsLoaded = false;
+let lastErrorData = null;
+let resettingPin = false;
+
+function show(stepId) {
+    document.querySelectorAll('.step').forEach((el) => { el.hidden = el.id !== stepId; });
+    document.querySelector('.layout').classList.toggle('wide', stepId === 'step-hw');
+}
+
+function notify(text, ok) {
+    $('msg').textContent = text;
+    $('msg').className = ok ? 'ok' : 'err';
+}
+
+function clearNotice() {
+    $('msg').textContent = '';
+    $('msg').className = '';
+}
+
+function redact(key, value) {
+    return HIDDEN_FIELDS.includes(key) && value ? '(hidden)' : value;
+}
+
+function addLog(label, request, response) {
+    const entry = document.createElement('div');
+    entry.className = 'entry';
+    const pre = document.createElement('pre');
+    pre.textContent = label
+        + (request ? '\nRequest: ' + JSON.stringify(request, redact, 2) : '')
+        + '\nResponse: ' + JSON.stringify(response, redact, 2);
+    entry.appendChild(pre);
+    $('log').prepend(entry);
+}
+
+async function call(method, path, body, bearer, extraHeaders = {}) {
+    lastErrorData = null;
+    const isForm = body instanceof FormData;
+    const headers = { Accept: 'application/json', ...extraHeaders };
+    if (body && !isForm) headers['Content-Type'] = 'application/json';
+    if (bearer) headers.Authorization = 'Bearer ' + bearer;
+    const logged = isForm
+        ? [...body.entries()].map(([key, value]) => key + ': ' + (value instanceof File ? '(file) ' + value.name : value))
+        : body;
+
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach((b) => { b.disabled = true; });
+
+    try {
+        const res = await fetch(API + path, { method, headers, body: isForm ? body : (body ? JSON.stringify(body) : undefined) });
+        const text = await res.text();
+        let json;
+        try {
+            json = JSON.parse(text);
+        } catch {
+            json = { status: false, message: 'Server returned a non-JSON response (HTTP ' + res.status + ')', raw: text.slice(0, 500) };
+        }
+        addLog(method + ' ' + path + ' -> HTTP ' + res.status, logged, json);
+
+        if (res.ok && json.status !== false) {
+            if (json.message) notify(json.message, true);
+            return json.data ?? {};
+        }
+
+        const details = json.errors ? ': ' + Object.values(json.errors).flat().join(' ') : '';
+        notify((json.message || 'Request failed') + details, false);
+        lastErrorData = json.data ?? null;
+        return null;
+    } catch (e) {
+        addLog(method + ' ' + path + ' -> network error', logged, { message: e.message });
+        notify('Could not reach the API: ' + e.message, false);
+        return null;
+    } finally {
+        buttons.forEach((b) => { b.disabled = false; });
+    }
+}
+
+function fillSelect(select, rows, valueKey, labelFn) {
+    select.replaceChildren();
+    rows.forEach((row) => {
+        const option = document.createElement('option');
+        option.value = row[valueKey];
+        option.textContent = labelFn(row);
+        select.appendChild(option);
+    });
+}
+
+function isOthers() {
+    return $('school').value === 'others';
+}
+
+async function loadClasses() {
+    const others = isOthers();
+    $('class-wrap').hidden = others;
+    $('school-name-wrap').hidden = !others;
+    $('class-name-wrap').hidden = !others;
+    $('check-student').hidden = others;
+    $('class').replaceChildren();
+    if (others || !$('school').value) return;
+
+    const classes = await call('GET', '/schools/' + encodeURIComponent($('school').value) + '/classes');
+    if (classes) fillSelect($('class'), classes, 'class_code', (c) => c.class_name);
+}
+
+async function openSchoolStep() {
+    show('step-school');
+    if (schoolsLoaded) return;
+
+    const schools = await call('GET', '/schools');
+    if (!schools) return;
+
+    fillSelect($('school'), [...schools, { schl_id: 'others', schl_name: 'Others (type the name)' }], 'schl_id', (s) => s.schl_name);
+    schoolsLoaded = true;
+    await loadClasses();
+}
+
+function loggedIn(data) {
+    token = data.token;
+    $('user-data').textContent = JSON.stringify(data.user, null, 2);
+    $('old-token').hidden = true;
+    $('open-homework').hidden = !(data.user.role === 'teacher' && data.user.is_verified);
+    $('homework-guest').hidden = !(data.user.role === 'teacher' && !data.user.is_verified);
+    $('open-guardian').hidden = data.user.role !== 'guardian';
+    if (data.user.role === 'guardian') {
+        openGuardianHome();
+    } else {
+        show('step-home');
+    }
+}
+
+function sendMobileOtp() {
+    const body = { mobile_number: $('mobile').value.trim(), role: $('role').value };
+    if (resettingPin) body.reset_pin = true;
+    return call('POST', '/auth/send-otp', body);
+}
+
+function openPinLogin() {
+    $('login-mobile').value = $('mobile').value;
+    $('login-role').textContent = $('role').selectedOptions[0].textContent;
+    show('step-pin-login');
+}
+
+$('step-mobile').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearNotice();
+    resettingPin = false;
+    if (await sendMobileOtp()) {
+        show('step-otp');
+    } else if (lastErrorData && lastErrorData.next === 'pin_login') {
+        openPinLogin();
+    }
+});
+
+$('forgot-pin').addEventListener('click', async () => {
+    if (!$('login-mobile').reportValidity()) return;
+    $('mobile').value = $('login-mobile').value;
+    resettingPin = true;
+    if (await sendMobileOtp()) show('step-otp');
+});
+
+$('use-pin').addEventListener('click', () => {
+    clearNotice();
+    openPinLogin();
+});
+
+$('step-otp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/verify-otp', { mobile_number: $('mobile').value.trim(), otp: $('otp').value.trim(), role: $('role').value });
+    if (data) {
+        flowToken = data.flow_token;
+        const openStep = { teacher: openTeacherStep, guardian: () => openGuardianChildStep(false) }[$('role').value] || openSchoolStep;
+        await openStep();
+    }
+});
+
+// Guardian. The same steps are used before login, for a forgotten PIN and to add a child after login.
+
+let addingChild = false;
+
+function guardianPath(afterLogin, beforeLogin) {
+    return addingChild ? '/guardian/children/' + afterLogin : '/auth/guardian/' + beforeLogin;
+}
+
+async function loadGuardianClasses() {
+    $('guardian-class').replaceChildren();
+    if (!$('guardian-school').value) return;
+
+    const classes = await call('GET', '/schools/' + encodeURIComponent($('guardian-school').value) + '/classes');
+    if (classes) fillSelect($('guardian-class'), classes, 'class_code', (c) => c.class_name);
+}
+
+async function openGuardianChildStep(afterLogin) {
+    addingChild = afterLogin;
+    $('guardian-add-back').hidden = !afterLogin;
+    $('guardian-reset-note').hidden = !resettingPin || afterLogin;
+    $('guardian-student-id').value = '';
+    show('step-guardian-child');
+
+    const schools = await call('GET', '/schools');
+    if (!schools) return;
+
+    fillSelect($('guardian-school'), schools, 'schl_id', (s) => s.schl_name);
+    await loadGuardianClasses();
+}
+
+function sendGuardianOtp() {
+    return call('POST', guardianPath('send-otp', 'send-child-otp'), { flow_token: flowToken }, addingChild ? token : null);
+}
+
+$('guardian-school').addEventListener('change', loadGuardianClasses);
+$('guardian-resend').addEventListener('click', sendGuardianOtp);
+$('guardian-add').addEventListener('click', () => { clearNotice(); openGuardianChildStep(true); });
+$('guardian-add-back').addEventListener('click', () => { clearNotice(); openGuardianHome(); });
+$('guardian-home').addEventListener('click', () => { clearNotice(); show('step-home'); });
+$('open-guardian').addEventListener('click', () => { clearNotice(); openGuardianHome(); });
+
+$('step-guardian-child').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+        schl_id: Number($('guardian-school').value),
+        class_code: Number($('guardian-class').value),
+        student_id: $('guardian-student-id').value.trim(),
+    };
+    if (!addingChild) body.flow_token = flowToken;
+
+    const data = await call('POST', guardianPath('check', 'check'), body, addingChild ? token : null);
+    if (!data) return;
+
+    flowToken = data.flow_token;
+    $('guardian-masked').textContent = data.masked_number;
+    $('guardian-otp').value = '';
+    await sendGuardianOtp();
+    show('step-guardian-otp');
+});
+
+$('step-guardian-otp').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', guardianPath('verify-otp', 'verify-child-otp'), { flow_token: flowToken, otp: $('guardian-otp').value.trim() }, addingChild ? token : null);
+    if (!data) return;
+
+    if (addingChild) {
+        await openGuardianHome();
+    } else {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+async function showGuardianHomework(suffix) {
+    const data = await call('GET', '/guardian/children/' + $('guardian-switch').value + '/homework' + suffix, null, token);
+    if (data) $('guardian-info').textContent = JSON.stringify(data, null, 2);
+}
+
+$('guardian-homework').addEventListener('click', () => showGuardianHomework(''));
+$('guardian-summary').addEventListener('click', () => showGuardianHomework('/summary'));
+
+function showGuardianChild(child) {
+    $('guardian-info').textContent = child ? JSON.stringify(child, null, 2) : '';
+    $('guardian-remove').hidden = !child;
+    $('guardian-homework').hidden = !child;
+    $('guardian-summary').hidden = !child;
+    $('guardian-empty').hidden = Boolean(child);
+}
+
+async function openGuardianHome() {
+    show('step-guardian');
+    const data = await call('GET', '/guardian/dashboard', null, token);
+    if (!data) return;
+
+    const label = (c) => (c.student_name || 'ID ' + c.student_id) + ' | ' + (c.school_name || 'Unknown school');
+    fillSelect($('guardian-switch'), data.children, 'id', label);
+    $('guardian-switch-wrap').hidden = data.children.length < 2;
+    if (data.child) $('guardian-switch').value = data.child.id;
+    showGuardianChild(data.child);
+}
+
+$('guardian-switch').addEventListener('change', async () => {
+    const child = await call('GET', '/guardian/children/' + $('guardian-switch').value + '/dashboard', null, token);
+    if (child) showGuardianChild(child);
+});
+
+$('guardian-remove').addEventListener('click', async () => {
+    if (!confirm('Remove this child from your account?')) return;
+    if (await call('DELETE', '/guardian/children/' + $('guardian-switch').value, null, token)) await openGuardianHome();
+});
+
+async function openTeacherStep() {
+    show('step-teacher');
+    const schools = await call('GET', '/schools');
+    if (!schools) return;
+
+    fillSelect($('teacher-school'), [...schools, { schl_id: 'others', schl_name: 'Others (type the name)' }], 'schl_id', (s) => s.schl_name);
+    updateTeacherFields();
+}
+
+function isTeacherOthers() {
+    return $('teacher-school').value === 'others';
+}
+
+function updateTeacherFields() {
+    const others = isTeacherOthers();
+    $('teacher-school-name-wrap').hidden = !others;
+    $('teacher-school-name').required = others;
+    $('teacher-username-wrap').hidden = others;
+    $('teacher-username').required = !others;
+    $('teacher-password-wrap').hidden = others;
+    $('teacher-password').required = !others;
+    $('teacher-submit').textContent = others ? 'Continue as guest' : 'Verify';
+}
+
+$('teacher-school').addEventListener('change', updateTeacherFields);
+
+$('step-teacher').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = isTeacherOthers()
+        ? await call('POST', '/auth/teacher/guest', { flow_token: flowToken, school_name: $('teacher-school-name').value.trim() })
+        : await call('POST', '/auth/teacher/verify', {
+            flow_token: flowToken,
+            schl_id: Number($('teacher-school').value),
+            username: $('teacher-username').value.trim(),
+            password: $('teacher-password').value,
+        });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+$('resend-otp').addEventListener('click', sendMobileOtp);
+
+$('school').addEventListener('change', loadClasses);
+
+$('step-school').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/check', {
+        flow_token: flowToken,
+        schl_id: Number($('school').value),
+        class_code: Number($('class').value),
+        student_id: $('student-id').value.trim(),
+    });
+    if (data) {
+        flowToken = data.flow_token;
+        $('student-name').textContent = data.student_name;
+        $('send-contact').hidden = !data.has_contact_number;
+        $('no-contact').hidden = data.has_contact_number;
+        show('step-student');
+    }
+});
+
+$('step-student').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/verify-password', { flow_token: flowToken, password: $('password').value });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+function sendContactOtp() {
+    return call('POST', '/auth/student/send-contact-otp', { flow_token: flowToken });
+}
+
+$('send-contact').addEventListener('click', async () => {
+    if (await sendContactOtp()) show('step-contact');
+});
+
+$('use-password').addEventListener('click', () => {
+    clearNotice();
+    show('step-student');
+});
+
+$('resend-contact').addEventListener('click', sendContactOtp);
+
+$('step-contact').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/student/verify-contact-otp', { flow_token: flowToken, otp: $('contact-otp').value.trim() });
+    if (data) {
+        flowToken = data.flow_token;
+        show('step-pin');
+    }
+});
+
+document.querySelectorAll('.js-guest').forEach((button) => {
+    button.addEventListener('click', async () => {
+        if (!$('student-id').value.trim()) {
+            show('step-school');
+            notify('Enter a Student ID to continue as guest', false);
+            return;
+        }
+
+        const body = { flow_token: flowToken, student_id: $('student-id').value.trim() };
+        if (isOthers()) {
+            body.school_name = $('school-name').value.trim();
+            body.class_name = $('class-name').value.trim();
+        } else {
+            body.schl_id = Number($('school').value);
+            body.class_code = Number($('class').value);
+        }
+
+        const data = await call('POST', '/auth/guest', body);
+        if (data) {
+            flowToken = data.flow_token;
+            show('step-pin');
+        }
+    });
+});
+
+$('step-pin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/set-pin', { flow_token: flowToken, pin: $('pin').value, pin_confirmation: $('pin-confirm').value });
+    if (data) loggedIn(data);
+});
+
+$('step-pin-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = await call('POST', '/auth/pin-login', { mobile_number: $('login-mobile').value.trim(), role: $('role').value, pin: $('login-pin').value });
+    if (data) loggedIn(data);
+});
+
+$('load-me').addEventListener('click', async () => {
+    const data = await call('GET', '/auth/me', null, token);
+    if (data) $('user-data').textContent = JSON.stringify(data, null, 2);
+});
+
+$('logout').addEventListener('click', async () => {
+    if (await call('POST', '/auth/logout', {}, token)) {
+        oldToken = token;
+        $('old-token').hidden = false;
+    }
+});
+
+// After a logout this request should fail, because the saved auth_token has been cleared.
+$('old-token').addEventListener('click', () => call('GET', '/auth/me', null, oldToken));
+
+// Teacher homework panel
+
+const FORMATS = ['text', 'image', 'pdf', 'document', 'link', 'audio', 'video'];
+const TAGS = ['excellent', 'very_good', 'good', 'need_improvement', 'incomplete', 'resubmit'];
+const HW_VIEWS = ['dashboard', 'list', 'form', 'subs', 'work'];
+
+let teachingOptions = null;
+let editing = null;
+let snapshot = null;
+let currentHomework = null;
+let currentStudentId = null;
+
+function make(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    Object.assign(node, props);
+    node.append(...children.filter((child) => child !== null && child !== undefined));
+    return node;
+}
+
+function showHw(view) {
+    HW_VIEWS.forEach((name) => { $('hw-' + name).hidden = name !== view; });
+}
+
+function toLocalInput(iso) {
+    if (!iso) return '';
+    const date = new Date(iso);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function toUtc(localValue) {
+    return new Date(localValue).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function showTime(iso) {
+    return iso ? new Date(iso).toLocaleString() : '-';
+}
+
+function fileLink(url, label) {
+    return /^https?:\/\//i.test(url || '')
+        ? make('a', { href: url, target: '_blank', rel: 'noopener noreferrer', textContent: label })
+        : make('span', { textContent: label });
+}
+
+function checkbox(group, value, checked) {
+    return make('label', { className: 'check' }, make('input', { type: 'checkbox', value, checked, name: group }), value);
+}
+
+function checkedValues(group) {
+    return [...document.querySelectorAll('input[name="' + group + '"]:checked')].map((input) => input.value);
+}
+
+function renderHomework(container, items) {
+    if (!items.length) {
+        container.replaceChildren(make('p', { className: 'hint', textContent: 'No homework yet.' }));
+        return;
+    }
+
+    container.replaceChildren(...items.map((item) => {
+        const counts = item.counts;
+        return make('div', { className: 'item' },
+            make('strong', { textContent: item.title }),
+            make('p', { textContent: item.status + ' | ' + item.type + ' | ' + item.class + ' | ' + (item.section || 'All sections') + ' | ' + item.subject }),
+            make('p', { textContent: 'Due ' + showTime(item.due_at) + ' | Marks ' + item.total_marks }),
+            make('p', { textContent: 'Assigned ' + counts.assigned + ', submitted ' + counts.submitted + ', pending ' + counts.pending + ', missing ' + counts.missing + ', to check ' + counts.under_review + ', checked ' + counts.checked }),
+            make('button', { type: 'button', textContent: 'Submissions', onclick: () => openSubmissions(item) }),
+            make('button', { type: 'button', className: 'alt', textContent: 'Edit', onclick: () => openEdit(item.id) }),
+            make('button', { type: 'button', className: 'alt', textContent: 'Delete', onclick: () => deleteHomework(item) }),
+        );
+    }));
+}
+
+async function openDashboard() {
+    showHw('dashboard');
+    const data = await call('GET', '/teacher/homework/dashboard', null, token);
+    if (data) {
+        $('hw-totals').textContent = JSON.stringify(data.totals, null, 2);
+        renderHomework($('hw-recent'), data.recent);
+    }
+}
+
+async function openList() {
+    showHw('list');
+    const params = new URLSearchParams();
+    if ($('hw-filter-status').value) params.set('status', $('hw-filter-status').value);
+    if ($('hw-filter-search').value.trim()) params.set('search', $('hw-filter-search').value.trim());
+    const query = params.toString();
+    const items = await call('GET', '/teacher/homework' + (query ? '?' + query : ''), null, token);
+    if (items) renderHomework($('hw-items'), items);
+}
+
+async function deleteHomework(item) {
+    if (!confirm('Delete "' + item.title + '"?')) return;
+    if (await call('DELETE', '/teacher/homework/' + item.id, null, token)) await openList();
+}
+
+async function loadFormOptions() {
+    if (teachingOptions) return true;
+    const options = await call('GET', '/teacher/teaching-options', null, token);
+    const filters = options && await call('GET', '/teacher/homework/filter-options', null, token);
+    if (!filters) return false;
+    teachingOptions = options;
+    fillSelect($('hw-class'), options, 'id', (row) => row.name);
+    fillSelect($('hw-type'), filters.types, 'id', (row) => row.name);
+    $('hw-formats').replaceChildren(...FORMATS.map((format) => checkbox('hw-format', format, false)));
+    return true;
+}
+
+function fillClassOptions() {
+    const option = teachingOptions.find((row) => row.id === $('hw-class').value);
+    fillSelect($('hw-section'), [{ id: '', name: 'All sections' }, ...(option ? option.sections : [])], 'id', (row) => row.name);
+    fillSelect($('hw-subject'), option ? option.subjects : [], 'id', (row) => row.name);
+}
+
+// Homework from the web can use a class or subject outside this teacher's list.
+function selectValue(select, value, label) {
+    const wanted = value === null || value === undefined ? '' : String(value);
+    if (![...select.options].some((option) => option.value === wanted)) {
+        select.appendChild(make('option', { value: wanted, textContent: label || wanted }));
+    }
+    select.value = wanted;
+}
+
+function setLocked(ids, locked) {
+    ids.forEach((id) => { $(id).disabled = locked; });
+}
+
+function formNote(text) {
+    $('hw-form-note').textContent = text;
+    $('hw-form-note').hidden = !text;
+}
+
+async function openCreate() {
+    showHw('form');
+    if (!await loadFormOptions()) return;
+
+    editing = null;
+    snapshot = null;
+    $('hw-form').reset();
+    $('hw-form-title').textContent = 'Create homework';
+    formNote(teachingOptions.length ? '' : 'You have no classes in subject_teacher_info, so homework cannot be created.');
+    setLocked(['hw-class', 'hw-section', 'hw-total', 'hw-rubric', 'hw-save'], false);
+    $('hw-attachments').replaceChildren();
+    $('hw-publish-wrap').hidden = true;
+    fillClassOptions();
+}
+
+async function openEdit(id) {
+    showHw('form');
+    if (!await loadFormOptions()) return;
+
+    const detail = await call('GET', '/teacher/homework/' + id, null, token);
+    if (!detail) return;
+
+    editing = detail;
+    $('hw-form').reset();
+    $('hw-form-title').textContent = 'Edit: ' + detail.title;
+    selectValue($('hw-class'), detail.form.class_id, detail.class);
+    fillClassOptions();
+    selectValue($('hw-section'), detail.form.section_id, detail.section);
+    selectValue($('hw-subject'), detail.form.subject_id, detail.subject);
+    selectValue($('hw-type'), detail.type, detail.type);
+    $('hw-title').value = detail.title || '';
+    $('hw-description').value = detail.description || '';
+    $('hw-chapter').value = detail.chapter || '';
+    $('hw-due').value = toLocalInput(detail.due_at);
+    $('hw-priority').value = detail.form.priority || 'medium';
+    $('hw-total').value = detail.total_marks;
+    $('hw-passing').value = detail.passing_marks === null ? '' : detail.passing_marks;
+    $('hw-rubric').value = detail.rubric.map((row) => row.name + ': ' + row.max).join('\n');
+    document.querySelectorAll('input[name="hw-format"]').forEach((input) => { input.checked = detail.allowed_formats.includes(input.value); });
+
+    $('hw-attachments').replaceChildren(...detail.attachments.map((file) => make('div', {},
+        make('label', { className: 'check' }, make('input', { type: 'checkbox', name: 'hw-remove', value: file.id }), 'Remove '),
+        fileLink(file.url, file.name),
+    )));
+
+    const notes = [];
+    if (!detail.locks.editable) notes.push('This homework is closed, so it cannot be edited.');
+    if (detail.locks.target) notes.push('Class and section are fixed once published.');
+    if (detail.locks.marks) notes.push('Marks and rubric are fixed because something is assessed.');
+    formNote(notes.join(' '));
+
+    setLocked(['hw-class', 'hw-section'], detail.locks.target);
+    setLocked(['hw-total', 'hw-rubric'], detail.locks.marks);
+    $('hw-save').disabled = !detail.locks.editable;
+    $('hw-publish-wrap').hidden = detail.status !== 'draft';
+    snapshot = readForm();
+}
+
+function readForm() {
+    return {
+        class_id: $('hw-class').value,
+        section_id: $('hw-section').value,
+        subject_id: $('hw-subject').value,
+        type: $('hw-type').value,
+        title: $('hw-title').value.trim(),
+        description: $('hw-description').value.trim(),
+        chapter: $('hw-chapter').value.trim(),
+        due: $('hw-due').value,
+        priority: $('hw-priority').value,
+        total_marks: $('hw-total').value,
+        passing_marks: $('hw-passing').value,
+        formats: checkedValues('hw-format').sort().join(','),
+        rubric: $('hw-rubric').value.trim(),
+    };
+}
+
+function parseRubric(text) {
+    return text.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+        const at = line.lastIndexOf(':');
+        return { name: at > 0 ? line.slice(0, at).trim() : line, max: at > 0 ? Number(line.slice(at + 1)) : NaN };
+    });
+}
+
+// The API only changes the fields it is sent, and refuses some of them once locked.
+function buildBody(form) {
+    const body = {};
+    const changed = (field) => !snapshot || form[field] !== snapshot[field];
+
+    ['class_id', 'section_id', 'subject_id', 'type', 'title', 'description', 'chapter', 'priority', 'total_marks', 'passing_marks']
+        .forEach((field) => { if (changed(field)) body[field] = form[field]; });
+
+    if (changed('due')) body.due_at = toUtc(form.due);
+    if (changed('formats')) body.allowed_formats = form.formats ? form.formats.split(',') : [];
+    if (changed('rubric')) body.rubric = parseRubric(form.rubric);
+
+    if (editing) {
+        const remove = checkedValues('hw-remove');
+        if (remove.length) body.remove_attachment_ids = remove;
+        if ($('hw-publish').checked) body.publish = true;
+    }
+
+    return body;
+}
+
+function toFormData(body, files) {
+    const data = new FormData();
+
+    Object.entries(body).forEach(([key, value]) => {
+        if (key === 'rubric') {
+            value.forEach((row, index) => {
+                data.append('rubric[' + index + '][name]', row.name);
+                data.append('rubric[' + index + '][max]', row.max);
+            });
+        } else if (Array.isArray(value)) {
+            value.forEach((item) => data.append(key + '[]', item));
+        } else {
+            data.append(key, value === true ? '1' : value);
+        }
+    });
+
+    files.forEach((file) => data.append('files[]', file));
+    return data;
+}
+
+$('hw-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = buildBody(readForm());
+    const files = [...$('hw-files').files];
+    const payload = files.length ? toFormData(body, files) : body;
+    let saved;
+
+    if (editing) {
+        saved = await call(files.length ? 'POST' : 'PATCH', '/teacher/homework/' + editing.id, payload, token);
+    } else {
+        saved = await call('POST', '/teacher/homework', payload, token, { 'Idempotency-Key': Date.now() + '-' + Math.random().toString(36).slice(2) });
+    }
+
+    if (saved) {
+        const message = $('msg').textContent;
+        await openList();
+        notify(message, true);
+    }
+});
+
+async function openSubmissions(item) {
+    currentHomework = item;
+    showHw('subs');
+    $('hw-subs-title').textContent = 'Submissions: ' + item.title;
+    const rows = await call('GET', '/teacher/homework/' + item.id + '/submissions', null, token);
+    if (!rows) return;
+
+    $('hw-sub-items').replaceChildren(...(rows.length ? rows.map((row) => make('div', { className: 'item' },
+        make('strong', { textContent: 'Roll ' + (row.roll ?? '-') + ': ' + (row.student_name || row.student_id) }),
+        make('p', { textContent: row.status + (row.is_late ? ' (late)' : '') + ' | Versions ' + row.versions + ' | Submitted ' + showTime(row.submitted_at) }),
+        make('button', { type: 'button', textContent: 'Open', onclick: () => openWork(row.student_id) }),
+    )) : [make('p', { className: 'hint', textContent: 'No students on this homework.' })]));
+}
+
+async function openWork(studentId) {
+    currentStudentId = studentId;
+    showHw('work');
+    const work = await call('GET', '/teacher/homework/' + currentHomework.id + '/submissions/' + studentId, null, token);
+    if (work) renderWork(work);
+}
+
+function renderWork(work) {
+    $('hw-work-title').textContent = (work.student_name || work.student_id) + ' | ' + work.status + (work.resubmission_reason ? ' | Asked to fix: ' + work.resubmission_reason : '');
+
+    $('hw-versions').replaceChildren(...(work.versions.length ? work.versions.map((version) => make('div', { className: 'version' },
+        make('strong', { textContent: 'Version ' + version.version + (version.is_late ? ' (late)' : '') + ' | ' + showTime(version.submitted_at) }),
+        version.text ? make('p', { textContent: version.text }) : null,
+        ...version.links.map((link) => make('p', {}, fileLink(link, link))),
+        ...version.files.map((file) => make('p', {}, fileLink(file.url, file.name))),
+    )) : [make('p', { className: 'hint', textContent: 'Nothing handed in yet, so this cannot be assessed.' })]));
+
+    const assessment = work.assessment;
+    const rubric = currentHomework.rubric;
+
+    $('hw-marks').replaceChildren(...(rubric.length
+        ? rubric.map((row) => {
+            const score = assessment ? assessment.criteria.find((item) => item.name === row.name) : null;
+            return make('label', { textContent: row.name + ' (max ' + row.max + ')' },
+                make('input', { type: 'number', step: 'any', min: 0, max: row.max, required: true, value: score ? score.obtained : '', className: 'hw-criterion', title: row.name }));
+        })
+        : [make('label', { textContent: 'Marks (out of ' + currentHomework.total_marks + ')' },
+            make('input', { type: 'number', step: 'any', min: 0, max: currentHomework.total_marks, required: true, value: assessment ? assessment.obtained_marks : '', id: 'hw-obtained' }))]));
+
+    $('hw-tags').replaceChildren(...TAGS.map((tag) => checkbox('hw-tag', tag, Boolean(assessment && assessment.tags.includes(tag)))));
+    $('hw-feedback').value = assessment ? (assessment.feedback || '') : '';
+    $('hw-reason').value = '';
+    $('hw-new-due').value = '';
+}
+
+$('hw-assess').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { tags: checkedValues('hw-tag'), feedback: $('hw-feedback').value };
+
+    if (currentHomework.rubric.length) {
+        body.criteria = [...document.querySelectorAll('.hw-criterion')].map((input) => ({ name: input.title, obtained: Number(input.value) }));
+    } else {
+        body.obtained_marks = Number($('hw-obtained').value);
+    }
+
+    const work = await call('POST', '/teacher/homework/' + currentHomework.id + '/submissions/' + currentStudentId + '/assessment', body, token);
+    if (work) renderWork(work);
+});
+
+$('hw-resubmit').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { reason: $('hw-reason').value };
+    if ($('hw-new-due').value) body.new_due_at = toUtc($('hw-new-due').value);
+
+    const work = await call('POST', '/teacher/homework/' + currentHomework.id + '/submissions/' + currentStudentId + '/resubmission', body, token);
+    if (work) renderWork(work);
+});
+
+$('open-homework').addEventListener('click', () => {
+    clearNotice();
+    show('step-hw');
+    openDashboard();
+});
+$('hw-nav-dashboard').addEventListener('click', () => { clearNotice(); openDashboard(); });
+$('hw-nav-list').addEventListener('click', () => { clearNotice(); openList(); });
+$('hw-nav-create').addEventListener('click', () => { clearNotice(); openCreate(); });
+$('hw-nav-home').addEventListener('click', () => { clearNotice(); show('step-home'); });
+$('hw-filter-apply').addEventListener('click', openList);
+$('hw-class').addEventListener('change', fillClassOptions);
+$('hw-work-back').addEventListener('click', () => openSubmissions(currentHomework));
+
+$('restart').addEventListener('click', () => {
+    flowToken = null;
+    token = null;
+    oldToken = null;
+    resettingPin = false;
+    addingChild = false;
+    teachingOptions = null;
+    editing = null;
+    snapshot = null;
+    currentHomework = null;
+    currentStudentId = null;
+    document.querySelectorAll('input:not([type=checkbox])').forEach((input) => { input.value = ''; });
+    clearNotice();
+    show('step-mobile');
+});
+</script>
+</body>
+</html>

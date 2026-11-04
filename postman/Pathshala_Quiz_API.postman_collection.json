@@ -1,0 +1,159 @@
+{
+  "info": {
+    "name": "Pathshala App API - Quiz",
+    "description": "Quiz module (13.1 to 13.10). Log in first with the Homework or Guardian collection, then paste student_token, teacher_token, guardian_token, student_id (placement.homework_student_id from /auth/me, or child.homework_student_id from /guardian/dashboard for a guardian) here. Run '13.6' to see your class keys, set class_id and subject_id, then '13.8 Create' (saves quiz_id). Then as the student: 13.3 Accept, 13.4 Start, 13.5 Submit (set question_id from 13.4). Then as the teacher: 13.7, 13.9, 13.10. Every response is { status, message, data }. Dates are UTC.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let body = {};",
+          "try { body = pm.response.json(); } catch (e) {}",
+          "if (pm.info.requestName.startsWith('13.8') && body.data && body.data.id) { pm.collectionVariables.set('quiz_id', body.data.id); }",
+          "if (pm.info.requestName.startsWith('13.4') && body.data && body.data.questions && body.data.questions[0]) { pm.collectionVariables.set('question_id', body.data.questions[0].id); }"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api/v1" },
+    { "key": "student_token", "value": "" },
+    { "key": "teacher_token", "value": "" },
+    { "key": "guardian_token", "value": "" },
+    { "key": "student_id", "value": "" },
+    { "key": "class_id", "value": "" },
+    { "key": "subject_id", "value": "" },
+    { "key": "quiz_id", "value": "" },
+    { "key": "question_id", "value": "" },
+    { "key": "due_at", "value": "2027-01-15T04:00:00Z" },
+    { "key": "ends_at", "value": "2027-01-16T04:00:00Z" }
+  ],
+  "item": [
+    {
+      "name": "1. Student",
+      "item": [
+        {
+          "name": "13.1 Quiz report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes"
+          }
+        },
+        {
+          "name": "13.2 One quiz",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes/{{quiz_id}}"
+          }
+        },
+        {
+          "name": "13.3 Accept",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes/{{quiz_id}}/accept"
+          }
+        },
+        {
+          "name": "13.4 Start or resume (saves question_id)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes/{{quiz_id}}/attempt"
+          }
+        },
+        {
+          "name": "13.5 Submit",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{student_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes/{{quiz_id}}/attempt/submit",
+            "body": { "mode": "raw", "raw": "{\n  \"answers\": { \"{{question_id}}\": 1 }\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Guardian (read only)",
+      "item": [
+        {
+          "name": "13.1 Child's quiz report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes"
+          }
+        },
+        {
+          "name": "13.2 Child's quiz",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{guardian_token}}" }],
+            "url": "{{base_url}}/students/{{student_id}}/quizzes/{{quiz_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Teacher",
+      "item": [
+        {
+          "name": "13.6 Quizzes and class keys",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/quizzes"
+          }
+        },
+        {
+          "name": "13.8 Create in-app quiz (saves quiz_id)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }, { "key": "Idempotency-Key", "value": "{{$guid}}" }],
+            "url": "{{base_url}}/teacher/quizzes",
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Chapter 1 quiz\",\n  \"subject_id\": \"{{subject_id}}\",\n  \"class_id\": \"{{class_id}}\",\n  \"instructions\": \"Answer all\",\n  \"total_marks\": 4,\n  \"due_at\": \"{{due_at}}\",\n  \"ends_at\": \"{{ends_at}}\",\n  \"mode\": \"in_app\",\n  \"duration_minutes\": 15,\n  \"questions\": [\n    { \"text\": \"2 + 2 = ?\", \"options\": [\"3\", \"4\", \"5\"], \"correct\": 1, \"marks\": 2 },\n    { \"text\": \"Which are prime?\", \"options\": [\"2\", \"4\", \"3\"], \"correct\": [0, 2], \"marks\": 2, \"negative_marks\": 0.5 }\n  ]\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "13.8 Create offline quiz (saves quiz_id)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }, { "key": "Idempotency-Key", "value": "{{$guid}}" }],
+            "url": "{{base_url}}/teacher/quizzes",
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Class test\",\n  \"subject_id\": \"{{subject_id}}\",\n  \"class_id\": \"{{class_id}}\",\n  \"total_marks\": 10,\n  \"due_at\": \"{{due_at}}\",\n  \"mode\": \"offline\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "13.7 Roster",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/quizzes/{{quiz_id}}/roster"
+          }
+        },
+        {
+          "name": "13.9 Save marks",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/quizzes/{{quiz_id}}/marks",
+            "body": { "mode": "raw", "raw": "{\n  \"marks\": [ { \"student_id\": \"{{student_id}}\", \"obtained\": 3, \"feedback\": \"Good\" } ]\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "13.10 Release",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{teacher_token}}" }],
+            "url": "{{base_url}}/teacher/quizzes/{{quiz_id}}/release"
+          }
+        }
+      ]
+    }
+  ]
+}

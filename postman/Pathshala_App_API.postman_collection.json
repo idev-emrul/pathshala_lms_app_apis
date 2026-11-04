@@ -1,0 +1,184 @@
+{
+  "info": {
+    "name": "Pathshala App API - Student Authentication",
+    "description": "Phase 1 auth flow. Run the requests in order: each one saves flow_token or token into the collection variables for the next. While OTP_FIXED is set, the OTP is 123456.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api/v1" },
+    { "key": "mobile_number", "value": "01700000001" },
+    { "key": "otp", "value": "123456" },
+    { "key": "schl_id", "value": "8" },
+    { "key": "class_code", "value": "6" },
+    { "key": "student_id", "value": "105002" },
+    { "key": "student_password", "value": "" },
+    { "key": "pin", "value": "1234" },
+    { "key": "flow_token", "value": "" },
+    { "key": "token", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let body = {};",
+          "try { body = pm.response.json(); } catch (e) {}",
+          "if (body.data && body.data.flow_token) { pm.collectionVariables.set('flow_token', body.data.flow_token); }",
+          "if (body.data && body.data.token) { pm.collectionVariables.set('token', body.data.token); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Mobile",
+      "item": [
+        {
+          "name": "Send or resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/send-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile_number}}\",\n  \"role\": \"student\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/verify-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile_number}}\",\n  \"otp\": \"{{otp}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. School and class",
+      "item": [
+        {
+          "name": "School list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/schools"
+          }
+        },
+        {
+          "name": "Class list",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/schools/{{schl_id}}/classes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Student check",
+      "item": [
+        {
+          "name": "Check Student ID and class",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/student/check",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Verify student password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/student/verify-password",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"password\": \"{{student_password}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Forgot password: send contact OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/student/send-contact-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Forgot password: verify contact OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/student/verify-contact-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"otp\": \"{{otp}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Guest",
+      "item": [
+        {
+          "name": "Guest: school from the list",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/guest",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"schl_id\": {{schl_id}},\n  \"class_code\": {{class_code}},\n  \"student_id\": \"{{student_id}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Guest: Others (typed school)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/guest",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"school_name\": \"ABC High School\",\n  \"class_name\": \"Six\",\n  \"student_id\": \"1234\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Login",
+      "item": [
+        {
+          "name": "Set PIN and get JWT",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/set-pin",
+            "body": { "mode": "raw", "raw": "{\n  \"flow_token\": \"{{flow_token}}\",\n  \"pin\": \"{{pin}}\",\n  \"pin_confirmation\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "PIN login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/pin-login",
+            "body": { "mode": "raw", "raw": "{\n  \"mobile_number\": \"{{mobile_number}}\",\n  \"role\": \"student\",\n  \"pin\": \"{{pin}}\"\n}", "options": { "raw": { "language": "json" } } }
+          }
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/me"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{base_url}}/auth/logout"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -36,7 +36,7 @@ abstract class TestCase extends BaseTestCase
             self::$prepared = true;
         }
 
-        foreach (['app_user', 'app_user_log', 'app_login_attempt'] as $table) {
+        foreach (['app_user', 'app_user_log', 'app_login_attempt', 'app_guardian_child'] as $table) {
             DB::connection('master')->table($table)->truncate();
         }
 

@@ -13,6 +13,7 @@ class AppLoginAttempt extends Model
     protected $fillable = [
         'mobile_number',
         'purpose',
+        'role',
         'otp',
         'wrong_attempts',
         'send_count',

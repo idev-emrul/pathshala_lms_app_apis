@@ -8,6 +8,7 @@ class AppUser extends Model
 {
     public const ROLE_STUDENT = 'student';
     public const ROLE_TEACHER = 'teacher';
+    public const ROLE_GUARDIAN = 'guardian';
 
     protected $connection = 'master';
 

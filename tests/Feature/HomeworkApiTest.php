@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppGuardianChild;
 use App\Models\AppUser;
 use App\Services\ActivityLogService;
 use App\Services\TokenService;
@@ -659,6 +660,105 @@ class HomeworkApiTest extends TestCase
 
         $this->assertNotNull($etag);
         $this->withToken($this->studentToken)->getJson($url, ['If-None-Match' => $etag])->assertStatus(304);
+    }
+
+    private function guardianWithChild(string $mobile, string $studentId): array
+    {
+        $user = AppUser::create(['mobile_number' => $mobile, 'role' => 'guardian', 'is_verified' => true, 'pin' => 'x']);
+        $child = AppGuardianChild::create(['app_user_id' => $user->id, 'schl_id' => self::TEST_SCHOOL_ID, 'student_id' => $studentId]);
+
+        $token = app(TokenService::class)->issueAppToken($user, null);
+        $user->update(['auth_token' => $token]);
+
+        return [$token, $child->id];
+    }
+
+    public function test_a_guardian_sees_the_same_homework_and_summary_as_the_student(): void
+    {
+        $homeworkId = $this->createHomework();
+        $this->handIn($homeworkId)->assertCreated();
+        $this->withToken($this->teacherToken)
+            ->postJson("/api/v1/teacher/homework/$homeworkId/submissions/".self::STUDENT_ROW.'/assessment', ['obtained_marks' => 8, 'feedback' => 'Good'])
+            ->assertOk();
+
+        [$token, $childId] = $this->guardianWithChild('01700000020', '9001');
+
+        $list = $this->withToken($token)->getJson("/api/v1/guardian/children/$childId/homework")->assertOk()
+            ->assertJsonPath('data.0.id', $homeworkId)
+            ->assertJsonPath('data.0.status', 'checked')
+            ->assertJsonPath('data.0.assessment.obtained_marks', 8)
+            ->assertJsonPath('data.0.submissions.0.text', 'My answer')
+            ->assertJsonMissingPath('data.0._version_count');
+
+        $this->assertSame(
+            $this->withToken($this->studentToken)->getJson('/api/v1/students/'.self::STUDENT_ROW.'/homework')->json('data'),
+            $list->json('data'),
+        );
+
+        $summary = $this->withToken($token)->getJson("/api/v1/guardian/children/$childId/homework/summary")->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.completed', 1);
+
+        $this->assertSame(
+            $this->withToken($this->studentToken)->getJson('/api/v1/students/'.self::STUDENT_ROW.'/homework/summary')->json('data'),
+            $summary->json('data'),
+        );
+    }
+
+    public function test_a_guardian_only_sees_the_work_of_their_own_child(): void
+    {
+        $homeworkId = $this->createHomework();
+        $this->handIn($homeworkId)->assertCreated();
+
+        [$token, $childId] = $this->guardianWithChild('01700000020', '9002');
+        [, $otherChildId] = $this->guardianWithChild('01700000021', '9001');
+
+        // Same class, so the homework is listed, but the classmate's answer is not.
+        $this->withToken($token)->getJson("/api/v1/guardian/children/$childId/homework")->assertOk()
+            ->assertJsonPath('data.0.status', 'not_submitted')
+            ->assertJsonCount(0, 'data.0.submissions');
+
+        $this->withToken($token)->getJson("/api/v1/guardian/children/$otherChildId/homework")->assertStatus(404);
+        $this->withToken($token)->getJson("/api/v1/guardian/children/$otherChildId/homework/summary")->assertStatus(404);
+    }
+
+    public function test_a_guardian_cannot_hand_in(): void
+    {
+        $homeworkId = $this->createHomework();
+        [$token, $childId] = $this->guardianWithChild('01700000020', '9001');
+
+        $this->handIn($homeworkId, token: $token)->assertStatus(403);
+        $this->withToken($token)->postJson("/api/v1/guardian/children/$childId/homework", ['text' => 'x'])->assertStatus(405);
+        $this->withToken($token)->getJson('/api/v1/students/'.self::STUDENT_ROW.'/homework')->assertStatus(403);
+
+        $this->assertSame(0, $this->school()->table('hw_submissions')->count());
+    }
+
+    public function test_guardian_homework_of_a_child_with_no_current_class_or_a_school_that_is_down(): void
+    {
+        [$token, $childId] = $this->guardianWithChild('01700000020', '9003');
+
+        $this->withToken($token)->getJson("/api/v1/guardian/children/$childId/homework")->assertStatus(404)
+            ->assertJsonPath('message', 'This child has no current class');
+
+        DB::connection('master')->table('school_information')->where('schl_id', self::TEST_SCHOOL_ID)->update(['db_name' => 'pathshala_app_no_such_database']);
+
+        $response = $this->withToken($token)->getJson("/api/v1/guardian/children/$childId/homework")->assertStatus(503);
+        $this->assertStringNotContainsString('pathshala_app_no_such_database', $response->getContent());
+    }
+
+    public function test_guardian_homework_answers_304_and_other_roles_are_refused(): void
+    {
+        [$token, $childId] = $this->guardianWithChild('01700000020', '9001');
+        $url = "/api/v1/guardian/children/$childId/homework";
+
+        $etag = $this->withToken($token)->getJson($url)->assertOk()->headers->get('ETag');
+
+        $this->assertNotNull($etag);
+        $this->withToken($token)->getJson($url, ['If-None-Match' => $etag])->assertStatus(304);
+
+        $this->withToken($this->studentToken)->getJson($url)->assertStatus(403);
+        $this->withToken($this->teacherToken)->getJson($url)->assertStatus(403);
     }
 
     public function test_wrong_method_answers_405(): void

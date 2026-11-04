@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Exceptions\ApiException;
 use App\Models\AppUser;
+use App\Services\GuardianChildService;
 use App\Services\HwAssignment\HomeworkCaller;
 use App\Services\SchoolDbService;
 use App\Services\TokenService;
@@ -20,12 +21,24 @@ class AuthorizeHomework
     public function __construct(
         private TokenService $tokens,
         private SchoolDbService $schools,
+        private GuardianChildService $children,
     ) {}
 
-    public function handle(Request $request, Closure $next, string $role): Response
+    public function handle(Request $request, Closure $next, string $role, ?string $alsoAllowed = null): Response
     {
         $user = $request->attributes->get('app_user');
         $db = $request->attributes->get('tenant');
+
+        // A guardian's token has no school, so it comes from the child they are asking about.
+        // No active ids are given, so a guardian can never act as the student.
+        if ($alsoAllowed === AppUser::ROLE_GUARDIAN && $user->role === AppUser::ROLE_GUARDIAN) {
+            $studentId = (int) $request->route('studentId');
+            [$childDb, , $childDbName] = $this->children->currentStudentById($user, $studentId, $request->integer('child_id') ?: null);
+
+            $request->attributes->set('homework_caller', new HomeworkCaller($user, $childDb, $childDbName, studentIds: [$studentId]));
+
+            return $next($request);
+        }
 
         if ($user->role !== $role || ! $user->is_verified || ! $db) {
             throw new ApiException('You do not have access to this', 403);

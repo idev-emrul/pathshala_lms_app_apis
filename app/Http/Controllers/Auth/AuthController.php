@@ -15,7 +15,7 @@ class AuthController extends Controller
 {
     private const MOBILE_RULE = ['required', 'string', 'regex:/^01[3-9]\d{8}$/'];
 
-    private const ROLE_RULE = ['string', 'in:student,teacher'];
+    private const ROLE_RULE = ['string', 'in:student,teacher,guardian'];
 
     public function __construct(
         private OtpService $otp,
@@ -35,7 +35,7 @@ class AuthController extends Controller
             $this->students->ensureNoAccountYet($input['mobile_number'], $input['role']);
         }
 
-        $sent = $this->otp->send($input['mobile_number'], OtpService::PURPOSE_LOGIN);
+        $sent = $this->otp->send($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['role']);
 
         return ApiResponse::success('OTP sent to '.Phone::mask($input['mobile_number']), $sent);
     }
@@ -48,9 +48,10 @@ class AuthController extends Controller
             'role' => self::ROLE_RULE,
         ]);
 
-        $role = $input['role'] ?? 'student';
+        // The role comes from send-otp, which is where a number with an account is refused.
+        $sentRole = $this->otp->verify($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['otp'], $input['role'] ?? null);
+        $role = $sentRole ?? $input['role'] ?? 'student';
 
-        $this->otp->verify($input['mobile_number'], OtpService::PURPOSE_LOGIN, $input['otp']);
         $this->students->recordVerifiedMobile($input['mobile_number'], $role);
 
         return ApiResponse::success('Mobile verified', [
